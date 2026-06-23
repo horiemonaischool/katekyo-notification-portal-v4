@@ -1,9 +1,9 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>繧ｫ繝・く繝ｧ騾夂衍繝励Ξ繝薙Η繝ｼ</title>
+  <title>カテキョ通知プレビュー</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -12,62 +12,61 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">K</div>
         <div>
-          <h1>繧ｫ繝・く繝ｧ騾夂衍繝励Ξ繝薙Η繝ｼ</h1>
+          <h1>カテキョ通知プレビュー</h1>
           <p>
-            <span id="cycleLabel">隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ</span>
-            <span id="postingStatus" class="posting-status posting-off">謚慕ｨｿOFF</span>
+            <span id="cycleLabel">読み込み中</span>
+            <span id="postingStatus" class="posting-status posting-off">投稿OFF</span>
           </p>
         </div>
       </div>
       <div class="operator-box">
-        <label for="operatorName">謫堺ｽ懊Θ繝ｼ繧ｶ繝ｼ</label>
+        <label for="operatorName">操作ユーザー</label>
         <select id="operatorName">
-          <option value="">驕ｸ謚・/option>
-          <option value="螟ｧ蟲ｶ">螟ｧ蟲ｶ</option>
-          <option value="豌ｸ蟲ｶ">豌ｸ蟲ｶ</option>
-          <option value="荳ｭ蟾・>荳ｭ蟾・/option>
+          <option value="">選択</option>
+          <option value="大島">大島</option>
+          <option value="中川">中川</option>
         </select>
-        <button id="refreshButton" class="ghost-button" type="button">譖ｴ譁ｰ</button>
+        <button id="refreshButton" class="ghost-button" type="button">更新</button>
       </div>
     </header>
 
     <main class="layout">
       <aside class="sidebar">
-        <section class="summary-strip" aria-label="迥ｶ諷句挨莉ｶ謨ｰ">
+        <section class="summary-strip" aria-label="状態別件数">
           <button class="count-pill active" data-status="">
-            <span>蜈ｨ菴・/span><strong id="countAll">0</strong>
+            <span>全体</span><strong id="countAll">0</strong>
           </button>
           <button class="count-pill" data-status="needs_review">
-            <span>隕∫｢ｺ隱・/span><strong id="countNeeds">0</strong>
+            <span>要確認</span><strong id="countNeeds">0</strong>
           </button>
           <button class="count-pill" data-status="approved">
-            <span>騾∽ｿ｡OK</span><strong id="countApproved">0</strong>
+            <span>送信OK</span><strong id="countApproved">0</strong>
           </button>
           <button class="count-pill" data-status="skipped">
-            <span>騾√ｉ縺ｪ縺・/span><strong id="countSkipped">0</strong>
+            <span>送らない</span><strong id="countSkipped">0</strong>
           </button>
         </section>
 
         <div class="filters">
-          <input id="searchInput" placeholder="莨∵･ｭ蜷阪〒讀懃ｴ｢">
+          <input id="searchInput" placeholder="企業名で検索">
           <select id="deliveryFilter">
-            <option value="">騾夂衍譁ｹ豕輔☆縺ｹ縺ｦ</option>
+            <option value="">通知方法すべて</option>
             <option value="slack">Slack</option>
             <option value="chatwork">Chatwork</option>
-            <option value="none">譛ｪ險ｭ螳・/option>
+            <option value="none">未設定</option>
           </select>
           <select id="stageFilter">
-            <option value="">蜿苓ｬ帙せ繝・・繧ｸ縺吶∋縺ｦ</option>
-            <option value="start_recent">髢句ｧ狗峩蠕・/option>
-            <option value="two_weeks">髢句ｧ・騾ｱ髢灘燕蠕・/option>
-            <option value="one_month">髢句ｧ・縺区怦蜑榊ｾ・/option>
-            <option value="three_months">髢句ｧ・縺区怦蜑榊ｾ・/option>
-            <option value="six_months">髢句ｧ・縺区怦蜑榊ｾ・/option>
-            <option value="nine_months">髢句ｧ・縺区怦蜑榊ｾ・/option>
-            <option value="ending_soon">邨ゆｺ・縺区怦蜑・/option>
-            <option value="ending_final">邨ゆｺ・峩蜑・/option>
-            <option value="regular">騾壼ｸｸ繝輔か繝ｭ繝ｼ</option>
-            <option value="missing_start">髢句ｧ区律譛ｪ險ｭ螳・/option>
+            <option value="">受講ステージすべて</option>
+            <option value="start_recent">開始直後</option>
+            <option value="two_weeks">開始2週間前後</option>
+            <option value="one_month">開始1か月前後</option>
+            <option value="three_months">開始3か月前後</option>
+            <option value="six_months">開始6か月前後</option>
+            <option value="nine_months">開始9か月前後</option>
+            <option value="ending_soon">終了1か月前</option>
+            <option value="ending_final">終了直前</option>
+            <option value="regular">通常フォロー</option>
+            <option value="missing_start">開始日未設定</option>
           </select>
         </div>
 
@@ -76,8 +75,8 @@
 
       <section class="detail" id="detailPanel">
         <div class="empty-state">
-          <h2>莨∵･ｭ繧帝∈謚・/h2>
-          <p>蟾ｦ縺ｮ荳隕ｧ縺九ｉ繝励Ξ繝薙Η繝ｼ繧帝幕縺・※縺上□縺輔＞縲・/p>
+          <h2>企業を選択</h2>
+          <p>左の一覧からプレビューを開いてください。</p>
         </div>
       </section>
     </main>
@@ -87,6 +86,3 @@
   <script src="/browser.js"></script>
 </body>
 </html>
-
-
-
