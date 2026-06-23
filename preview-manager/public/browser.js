@@ -11,7 +11,8 @@ const state = {
   config: {
     chatwork: { configured: false, enabled: false, mode: "preview_only" },
     slack: { configured: false, enabled: false, mode: "preview_only" }
-  }
+  },
+  notion: { configured: false, ok: false, message: "Notion未確認" }
 };
 
 const statusLabels = {
@@ -31,6 +32,7 @@ const deliveryLabels = {
 const els = {
   cycleLabel: document.getElementById("cycleLabel"),
   postingStatus: document.getElementById("postingStatus"),
+  notionStatus: document.getElementById("notionStatus"),
   operatorName: document.getElementById("operatorName"),
   refreshButton: document.getElementById("refreshButton"),
   searchInput: document.getElementById("searchInput"),
@@ -118,6 +120,15 @@ function staticApi(path) {
     };
   }
   throw new Error("This static Vercel preview is read-only.");
+}
+
+async function loadNotionStatus() {
+  try {
+    state.notion = await api("/api/notion-status");
+  } catch (error) {
+    state.notion = { configured: false, ok: false, message: error.message || "Notion未確認" };
+  }
+  renderNotionStatus();
 }
 
 function operator() {
@@ -231,6 +242,24 @@ function renderConfig() {
   }
   els.postingStatus.textContent = label;
   els.postingStatus.className = className;
+}
+
+function renderNotionStatus() {
+  const notion = state.notion || {};
+  let label = "Notion未設定";
+  let className = "posting-status posting-off";
+
+  if (notion.configured && notion.ok) {
+    label = "Notion接続OK";
+    className = "posting-status posting-on";
+  } else if (notion.configured) {
+    label = "Notion接続エラー";
+    className = "posting-status posting-standby";
+  }
+
+  els.notionStatus.textContent = label;
+  els.notionStatus.className = className;
+  els.notionStatus.title = notion.message || "";
 }
 
 async function loadPreviews() {
@@ -675,6 +704,6 @@ els.stageFilter.addEventListener("change", () => {
 });
 
 setOperatorFromStorage();
-loadConfig()
+Promise.all([loadConfig(), loadNotionStatus()])
   .then(loadPreviews)
   .catch((error) => toast(error.message));
