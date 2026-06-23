@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>カテキョ通知プレビュー管理画面 アーキテクチャレビュー</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #333;
+      --muted: #666;
+      --line: #d8dee4;
+      --bg: #f6f8fa;
+      --panel: #fff;
+      --accent: #0f6ba8;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Hiragino Kaku Gothic Pro", Meiryo, "MS PGothic", sans-serif;
+      font-size: 16px;
+      line-height: 1.9;
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+    article {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-top: 5px solid var(--accent);
+      border-radius: 8px;
+      padding: 32px;
+      box-shadow: 0 8px 24px rgba(31, 55, 78, .08);
+    }
+    h1, h2, h3 {
+      line-height: 1.5;
+      margin: 0;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    h2 {
+      font-size: 21px;
+      margin-top: 36px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--line);
+    }
+    h3 {
+      font-size: 17px;
+      margin-top: 24px;
+    }
+    p {
+      margin: 10px 0;
+    }
+    ul, ol {
+      padding-left: 1.4em;
+    }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+    }
+    pre {
+      overflow: auto;
+      background: #f3f5f7;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 14px;
+      line-height: 1.6;
+    }
+    .meta {
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+    .notice {
+      border-left: 4px solid #b04436;
+      background: #fff4f2;
+      padding: 12px 14px;
+      border-radius: 6px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 14px;
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+<main>
+<article>
+  <h1>カテキョ通知プレビュー管理画面 アーキテクチャレビュー依頼</h1>
+  <p class="meta">作成日: 2026-06-19 / 対象: preview-manager MVP / 将来は社内向けサーバー・クラウドへ移行予定</p>
+
+  <div class="notice">
+    <strong>共有時の注意:</strong> 実データ入りの <code>previews.json</code>、<code>.env</code>、watch report、Chatwork同期結果は共有しないでください。APIキー、クライアント企業名、個人名を含む可能性があります。
+  </div>
+
+  <h2>レビュー目的</h2>
+  <p>CS向けに、受講企業ごとのOneStream視聴状況を確認し、Slack/Chatworkへの進捗通知案を作成・確認・送信する管理画面を作っています。</p>
+  <p>現状のMVPが、将来的なサーバー移行、複数人利用、200社規模の定期運用、Slack/Chatwork投稿に耐えられる設計になっているかを精査してほしいです。</p>
+
+  <h2>業務要件</h2>
+  <ul>
+    <li>受講企業ごとの直近受講履歴を確認する</li>
+    <li>誰が何本見たか、どの講義を見たかを把握する</li>
+    <li>受講履歴からおすすめ講義候補を出す</li>
+    <li>Slack/Chatwork向け通知本文をプレビューする</li>
+    <li>人間が確認してから投稿する</li>
+    <li>毎営業日20社程度を処理し、200社規模を回す</li>
+    <li>受講開始日ベースで節目グループを扱う</li>
+    <li>前回面談日、総合面談実施回数、次回面談予定日を表示する</li>
+  </ul>
+
+  <h2>現在できていること</h2>
+  <div class="grid">
+    <div class="card">Notionの受講企業マスターから契約中企業を取り込み</div>
+    <div class="card">OneStream視聴履歴の取得と企業別プレビュー反映</div>
+    <div class="card">通知本文ドラフトの表示・編集</div>
+    <div class="card">受講者別サマリーとおすすめ講義候補の表示</div>
+    <div class="card">Slack/Chatwork接続確認</div>
+    <div class="card">承認後のみ送信、投稿履歴を保存</div>
+    <div class="card">操作ユーザーの選択と操作ログ保存</div>
+    <div class="card">受講ステージ判定と絞り込み</div>
+    <div class="card">面談3項目のデータ構造・画面表示</div>
+  </div>
+
+  <h2>現在の構成</h2>
+  <pre><code>Notion 受講企業マスター
+        ↓
+import-notion-companies.cjs
+        ↓
+preview-manager/data/previews.json
+        ↓
+update-watch-reports.cjs
+        ↓
+OneStream API
+        ↓
+通知プレビュー生成
+        ↓
+server.js
+        ↓
+HTML管理画面
+        ↓
+承認後にSlack / Chatwork投稿</code></pre>
+
+  <h2>主なファイル</h2>
+  <pre><code>preview-manager/
+├─ server.js
+├─ public/
+│  ├─ index.html
+│  ├─ app.js
+│  └─ styles.css
+├─ scripts/
+│  ├─ import-notion-companies.cjs
+│  ├─ update-watch-reports.cjs
+│  ├─ sync-chatwork-room-ids.cjs
+│  └─ seed-previews.cjs
+├─ data/
+│  └─ previews.json
+├─ .env.example
+└─ start-preview-manager.cmd</code></pre>
+
+  <h2>現在のデータモデル</h2>
+  <p>MVPでは <code>preview-manager/data/previews.json</code> に集約しています。将来的には以下へ分離予定です。</p>
+  <pre><code>companies
+contracts
+notification_destinations
+watch_report_runs
+watch_report_summaries
+notification_previews
+notification_send_logs
+meeting_summaries
+daily_processing_queue
+operators
+audit_logs</code></pre>
+
+  <h2>外部連携</h2>
+  <h3>Notion</h3>
+  <p>受講企業マスターを正台帳として扱います。契約期間中の企業のみ対象。Notionレコード削除は行いません。</p>
+  <h3>OneStream</h3>
+  <p>グループ、ユーザー、動画、視聴ログを取得します。全社一括取得は重いため、毎営業日20社程度の分割処理に寄せる予定です。</p>
+  <h3>Chatwork / Slack</h3>
+  <p>投稿専用アカウントまたはBotで投稿します。初期状態は投稿OFFで、承認後のみ送信します。</p>
+
+  <h2>セキュリティ前提</h2>
+  <ul>
+    <li>APIキーやトークンはブラウザへ出さない</li>
+    <li>Slack/Chatwork投稿はサーバー側で実行する</li>
+    <li>本番投稿は操作者、日時、投稿先、本文、結果を記録する</li>
+    <li>将来の社内ポータル化時は認証と権限管理を必須にする</li>
+    <li>公開リポジトリや外部サービスにクライアント情報を置かない</li>
+  </ul>
+
+  <h2>毎営業日20社処理の構想</h2>
+  <pre><code>毎営業日
+↓
+契約中企業から処理候補を選定
+↓
+今日の20社をキュー化
+↓
+対象20社だけOneStream履歴取得
+↓
+通知プレビュー生成
+↓
+管理画面で確認
+↓
+承認済みだけSlack/Chatwork投稿
+↓
+投稿履歴を保存</code></pre>
+
+  <h2>既知の課題</h2>
+  <ul>
+    <li>現状は認証なし</li>
+    <li>JSON保存のため複数人同時操作に弱い</li>
+    <li>送信履歴・承認履歴のDB設計が未確定</li>
+    <li>OneStream取得のレート制限・再試行・差分取得が未完成</li>
+    <li>Notionとローカルデータの同期方針が未確定</li>
+    <li>サーバー移行時の認証・権限・監査ログが未実装</li>
+    <li>一部スクリプトにローカルPC前提の絶対パスが残っているため、サーバー移行前に設定値化または環境変数化が必要</li>
+  </ul>
+
+  <h2>レビューしてほしい観点</h2>
+  <ol>
+    <li>将来サーバー移行しやすい構成か</li>
+    <li>DB化するならどの粒度で分けるべきか</li>
+    <li>200社規模・毎営業日20社取得に耐えられるか</li>
+    <li>Slack/Chatwork誤投稿防止は十分か</li>
+    <li>承認フロー、送信履歴、監査ログに不足がないか</li>
+    <li>認証・権限設計はどう分けるべきか</li>
+    <li>Secret管理に問題がないか</li>
+    <li>複数人同時利用時の競合対策はどうすべきか</li>
+    <li>外部連携の責務分離は妥当か</li>
+    <li>自動投稿へ進める場合、どこまで人間承認を残すべきか</li>
+  </ol>
+
+  <h2>レビュー時に見てほしいコード</h2>
+  <pre><code>preview-manager/server.js
+preview-manager/public/app.js
+preview-manager/public/index.html
+preview-manager/scripts/import-notion-companies.cjs
+preview-manager/scripts/update-watch-reports.cjs
+preview-manager/scripts/sync-chatwork-room-ids.cjs
+preview-manager/.env.example
+preview-manager/README.md</code></pre>
+</article>
+</main>
+</body>
+</html>
