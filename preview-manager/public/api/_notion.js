@@ -269,12 +269,25 @@ function pageToPreview(page) {
   };
 }
 
-async function queryCompanyPages({ pageSize = 100 } = {}) {
+async function queryCompanyPages({ pageSize = 100, maxPages = 10 } = {}) {
   const { databaseId } = requireNotionConfig();
-  const response = await notionRequest(`databases/${encodeURIComponent(databaseId)}/query`, {
-    page_size: Math.min(Math.max(Number(pageSize) || 100, 1), 100)
-  });
-  return response.results || [];
+  const results = [];
+  let startCursor = "";
+  let page = 0;
+
+  do {
+    const body = {
+      page_size: Math.min(Math.max(Number(pageSize) || 100, 1), 100)
+    };
+    if (startCursor) body.start_cursor = startCursor;
+
+    const response = await notionRequest(`databases/${encodeURIComponent(databaseId)}/query`, body);
+    results.push(...(response.results || []));
+    startCursor = response.has_more ? response.next_cursor : "";
+    page += 1;
+  } while (startCursor && page < maxPages);
+
+  return results;
 }
 
 function countsFor(previews) {
