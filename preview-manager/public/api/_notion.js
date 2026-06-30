@@ -11,9 +11,26 @@ const PROP_GROUP_ID = "OneStreamグループID";
 const PROP_GROUP_NAME = "OneStreamグループ名";
 const PROP_CHAT_SUPPORT = "チャットサポート";
 const PROP_LEARNER_COUNT = "受講者数";
+const PROP_OVERVIEW_CANDIDATES = ["概要", "備考", "メモ"];
 const PROP_MEETING_LAST_CANDIDATES = ["前回の面談日", "前回面談日", "最終面談日"];
 const PROP_MEETING_COUNT_CANDIDATES = ["総合面談実施回数", "面談実施回数", "面談回数"];
 const PROP_MEETING_NEXT_CANDIDATES = ["次回面談予定日", "次回面談日", "次回の面談日"];
+
+const FC_EXCEPTIONS = ["FCSMG", "ミックス(30%)", "FC税理士校"];
+const COMPANY_BLACKLIST = ["和同情報システム株式会社", "株式会社トライスパイド"];
+const EXCLUDED_STATUS_KEYWORDS = [
+  "対象外",
+  "打ち止め",
+  "サポート打ち止め",
+  "ブラックリスト",
+  "問題企業",
+  "解約",
+  "終了",
+  "契約終了",
+  "停止",
+  "休止",
+  "失注"
+];
 
 function json(res, statusCode, body) {
   res.statusCode = statusCode;
@@ -155,6 +172,41 @@ function diffDays(fromYmd, toYmd = todayYmdInJst()) {
   return Math.floor((to - from) / 86400000);
 }
 
+function normalizeText(value) {
+  return String(value || "").replace(/\s+/g, "").toLowerCase();
+}
+
+function containsAny(value, keywords) {
+  const normalized = normalizeText(value);
+  return keywords.some((keyword) => normalized.includes(normalizeText(keyword)));
+}
+
+function isContractActive(start, end) {
+  const today = parseYmd(todayYmdInJst());
+  const startTime = parseYmd(start);
+  const endTime = parseYmd(end);
+  if (today === null || startTime === null || endTime === null) return false;
+  return startTime <= today && today <= endTime;
+}
+
+function isFcCompany({ company, groupName, overview }) {
+  const haystack = [company, groupName, overview].filter(Boolean).join(" ");
+  if (FC_EXCEPTIONS.some((name) => haystack.includes(name))) return false;
+  return /(^|[\s　])FC[^A-Za-z0-9ぁ-んァ-ヶ一-龠]|FC/.test(haystack);
+}
+
+function exclusionReasons(previewLike) {
+  const reasons = [];
+  const { company, statusText, start, end, groupName, overview } = previewLike;
+
+  if (COMPANY_BLACKLIST.includes(company)) reasons.push("個別除外企業");
+  if (!isContractActive(start, end)) reasons.push("契約期間外");
+  if (containsAny(statusText, EXCLUDED_STATUS_KEYWORDS)) reasons.push(`対象外ステータス：${statusText}`);
+  if (isFcCompany({ company, groupName, overview })) reasons.push("FC系企業");
+
+  return reasons;
+}
+
 function stageFor(start, end) {
   const daysSinceStart = diffDays(start);
   const daysUntilEnd = diffDays(todayYmdInJst(), end);
@@ -210,6 +262,7 @@ function pageToPreview(page) {
   const groupId = textValue(prop(page, PROP_GROUP_ID));
   const groupName = textValue(prop(page, PROP_GROUP_NAME));
   const chatSupportUrl = textValue(prop(page, PROP_CHAT_SUPPORT));
+  const overview = textValue(propAny(page, PROP_OVERVIEW_CANDIDATES));
   const meeting = {
     lastDate: dateText(propAny(page, PROP_MEETING_LAST_CANDIDATES)),
     totalCount: numberValue(propAny(page, PROP_MEETING_COUNT_CANDIDATES)),
@@ -218,6 +271,7 @@ function pageToPreview(page) {
   const risks = [];
   if (!groupId) risks.push("OneStreamグループID未設定");
   if (!chatSupportUrl) risks.push("通知先未設定");
+  const excludedReasons = exclusionReasons({ company, statusText, start, end, groupName, overview });
 
   return {
     id: page.id,
@@ -228,6 +282,10 @@ function pageToPreview(page) {
     delivery: detectDelivery(chatSupportUrl),
     contract: { start, end },
     stage: stageFor(start, end),
+    target: {
+      eligible: excludedReasons.length === 0,
+      excludedReasons
+    },
     meeting,
     reviewer: "",
     sentAt: "",
@@ -265,7 +323,7 @@ function pageToPreview(page) {
         detail: "受講企業マスター"
       }
     ],
-    notionMeta: { statusText, groupId, groupName, chatSupportUrl }
+    notionMeta: { statusText, groupId, groupName, chatSupportUrl, overview }
   };
 }
 
