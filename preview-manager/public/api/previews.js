@@ -12,6 +12,7 @@ module.exports = async function handler(req, res) {
     const pages = await queryCompanyPages({ pageSize: 100 });
     const allPreviews = pages
       .map(pageToPreview)
+      .filter((preview) => preview.target?.eligible)
       .sort((a, b) => a.company.localeCompare(b.company, "ja"));
     const previews = filterPreviews(allPreviews, url.searchParams);
 
