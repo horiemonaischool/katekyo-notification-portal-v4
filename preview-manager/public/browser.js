@@ -386,7 +386,7 @@ function renderDetail() {
   const slack = state.config.slack || {};
   const canPostChatwork = chatwork.enabled && chatwork.configured && deliveryType === "chatwork";
   const canPostSlack = slack.enabled && slack.configured && deliveryType === "slack";
-  const sendButtonLabel = canPostChatwork ? "Chatwork送信" : canPostSlack ? "Slack送信" : "送信テスト";
+  const sendButtonLabel = canPostChatwork ? "Chatwork送信" : canPostSlack ? "Slack送信" : "投稿前チェック";
   const isFetchingWatch = state.fetchingWatchId === preview.id;
   const chatworkState = chatwork.configured ? (chatwork.enabled ? "投稿ON" : "設定あり/投稿OFF") : "未設定";
   const slackState = slack.configured ? (slack.enabled ? "投稿ON" : "設定あり/投稿OFF") : "未設定";
@@ -740,7 +740,7 @@ async function sendDryRun() {
       body: JSON.stringify({ operator: operator(), confirmText: sendEnabled ? "送信する" : "" })
     });
     state.detail = data.preview;
-    toast(`${providerLabel}に送信しました`);
+    toast(sendEnabled ? `${providerLabel}に送信しました` : "投稿OFFのため、本番投稿はしていません");
     await loadPreviews();
   } catch (error) {
     toast(error.message || "外部投稿は実行されませんでした");
