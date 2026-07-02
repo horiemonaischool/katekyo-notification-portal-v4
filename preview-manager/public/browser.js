@@ -8,6 +8,7 @@ const state = {
   stageFilter: "",
   search: "",
   detail: null,
+  fetchingWatchId: "",
   config: {
     chatwork: { configured: false, enabled: false, mode: "preview_only" },
     slack: { configured: false, enabled: false, mode: "preview_only" }
@@ -169,6 +170,13 @@ function meetingValue(value) {
 function meetingCountText(value) {
   const text = meetingValue(value);
   return text === "-" ? "-" : `${text}回`;
+}
+
+function durationText(seconds) {
+  const total = Math.max(0, Number(seconds || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  return `${hours}時間${minutes}分`;
 }
 
 function toast(message) {
@@ -379,6 +387,7 @@ function renderDetail() {
   const canPostChatwork = chatwork.enabled && chatwork.configured && deliveryType === "chatwork";
   const canPostSlack = slack.enabled && slack.configured && deliveryType === "slack";
   const sendButtonLabel = canPostChatwork ? "Chatwork送信" : canPostSlack ? "Slack送信" : "送信テスト";
+  const isFetchingWatch = state.fetchingWatchId === preview.id;
   const chatworkState = chatwork.configured ? (chatwork.enabled ? "投稿ON" : "設定あり/投稿OFF") : "未設定";
   const slackState = slack.configured ? (slack.enabled ? "投稿ON" : "設定あり/投稿OFF") : "未設定";
   const risks = (preview.risks || []).map((risk) => `<span class="risk-badge">${escapeHtml(risk)}</span>`).join("");
@@ -426,6 +435,7 @@ function renderDetail() {
           </div>
         </div>
         <div class="detail-actions">
+          <button class="neutral-button" id="fetchWatchButton" type="button" ${isFetchingWatch ? "disabled" : ""}>${isFetchingWatch ? "取得中..." : "視聴履歴を取得"}</button>
           <button class="neutral-button" data-action="start_review" type="button">確認開始</button>
           <button class="success-button" data-action="approve" type="button">送信OK</button>
           <button class="danger-button" data-action="skip" type="button">今回は送らない</button>
@@ -549,6 +559,133 @@ function renderDetail() {
       </div>
     </div>
   `;
+}
+
+function buildWatchMessage(preview, result) {
+  const summary = result.summary || {};
+  const learners = summary.learners || [];
+  const activeLearners = learners
+    .filter((learner) => Number(learner.logs || 0) > 0)
+    .sort((a, b) => Number(b.watchSeconds || 0) - Number(a.watchSeconds || 0))
+    .slice(0, 5);
+  const recentVideos = summary.recentVideos || [];
+  const lines = [
+    `${preview.company} ご担当者さま`,
+    "",
+    "いつもお世話になっております。ホリエモンAI学校です。",
+    "直近の受講状況を共有いたします。",
+    "",
+    `登録受講者：${summary.userCount ?? preview.stats?.registeredUsers ?? 0}人`,
+    `視聴あり：${summary.activeUsers ?? 0}人`,
+    `視聴ログ：${summary.totalLogs ?? 0}件`,
+    `推定視聴時間：${summary.totalWatchTime || durationText(summary.totalWatchSeconds)}`
+  ];
+
+  if (recentVideos.length > 0) {
+    lines.push("", "■ 直近見られた講義");
+    recentVideos.slice(0, 3).forEach((title) => lines.push(`・${title}`));
+  }
+
+  if (activeLearners.length > 0) {
+    lines.push("", "■ 受講状況");
+    activeLearners.forEach((learner) => {
+      lines.push(`・${learner.name}：${learner.watchTime || durationText(learner.watchSeconds)} / ${learner.logs || 0}件`);
+    });
+  } else {
+    lines.push("", "直近では視聴履歴がまだ少ないようです。");
+  }
+
+  lines.push(
+    "",
+    "必要に応じて、次に取り組みやすそうな講義もあわせてご案内いたします。"
+  );
+  return lines.join("\n");
+}
+
+function applyWatchResult(result) {
+  const preview = state.detail;
+  if (!preview) return;
+  const summary = result.summary || {};
+  const previousStats = preview.stats || {};
+  const learners = (summary.learners || []).map((learner) => ({
+    name: learner.name || "-",
+    logs: Number(learner.logs || 0),
+    videoCount: Number(learner.videoCount || 0),
+    watchSeconds: Number(learner.watchSeconds || 0),
+    watchTime: learner.watchTime || durationText(learner.watchSeconds),
+    latestAt: learner.latestAt ? formatDateTime(learner.latestAt) : "-"
+  }));
+  const totalWatchSeconds = Number(summary.totalWatchSeconds || 0);
+  const risks = (preview.risks || []).filter((risk) => risk !== "直近視聴なし");
+
+  if (Number(summary.totalLogs || 0) === 0) {
+    risks.push("直近視聴なし");
+  }
+  if (Number(result.failedBatches || 0) > 0) {
+    risks.push(`視聴履歴の一部取得失敗 ${result.failedBatches}件`);
+  }
+
+  preview.stats = {
+    ...previousStats,
+    registeredUsers: Number(summary.userCount ?? previousStats.registeredUsers ?? 0),
+    activeUsers: Number(summary.activeUsers || 0),
+    totalLogs: Number(summary.totalLogs || 0),
+    uniqueVideos: Number(summary.uniqueVideos || 0),
+    totalWatchSeconds,
+    totalWatchTime: summary.totalWatchTime || durationText(totalWatchSeconds),
+    latestAt: summary.latestAt ? formatDateTime(summary.latestAt) : "-",
+    periodStart: summary.after || previousStats.periodStart,
+    periodEnd: summary.before || previousStats.periodEnd,
+    batchFailures: Number(result.failedBatches || 0)
+  };
+  preview.learners = learners;
+  preview.message = buildWatchMessage(preview, result);
+  preview.risks = [...new Set(risks)];
+
+  const recentVideos = summary.recentVideos || [];
+  if (recentVideos.length > 0) {
+    preview.recommendations = recentVideos.slice(0, 3).map((title) => ({
+      title,
+      reason: "直近の受講履歴に出ている講義です。必要に応じて次の案内に使えます。"
+    }));
+  }
+
+  const listIndex = state.previews.findIndex((item) => item.id === preview.id);
+  if (listIndex >= 0) {
+    state.previews[listIndex] = {
+      ...state.previews[listIndex],
+      stats: preview.stats,
+      learners: preview.learners,
+      message: preview.message,
+      recommendations: preview.recommendations,
+      risks: preview.risks
+    };
+  }
+}
+
+async function fetchWatchHistory() {
+  if (!state.selectedId || state.fetchingWatchId) return;
+  state.fetchingWatchId = state.selectedId;
+  renderDetail();
+  toast("視聴履歴を取得しています");
+  try {
+    const response = await fetch(`/api/previews/${encodeURIComponent(state.selectedId)}/watch?maxVideoChunks=0`, {
+      headers: { "content-type": "application/json" }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `HTTP ${response.status}`);
+    }
+    applyWatchResult(result);
+    toast("視聴履歴を反映しました");
+    renderList();
+    renderDetail();
+  } catch (error) {
+    toast(error.message || "視聴履歴の取得に失敗しました");
+  } finally {
+    state.fetchingWatchId = "";
+    renderDetail();
+  }
 }
 
 async function runAction(action) {
@@ -678,6 +815,11 @@ document.addEventListener("click", (event) => {
 
   if (event.target.id === "sendDryRunButton") {
     sendDryRun();
+    return;
+  }
+
+  if (event.target.id === "fetchWatchButton") {
+    fetchWatchHistory();
   }
 });
 
