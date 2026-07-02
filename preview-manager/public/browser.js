@@ -198,7 +198,8 @@ async function api(path, options = {}) {
     }
     return body;
   } catch (error) {
-    if (path.startsWith("/api/")) {
+    const method = String(options.method || "GET").toUpperCase();
+    if (method === "GET" && path.startsWith("/api/")) {
       return staticApi(path);
     }
     throw error;
@@ -740,7 +741,11 @@ async function sendDryRun() {
       body: JSON.stringify({ operator: operator(), confirmText: sendEnabled ? "送信する" : "" })
     });
     state.detail = data.preview;
-    toast(sendEnabled ? `${providerLabel}に送信しました` : "投稿OFFのため、本番投稿はしていません");
+    if (data.blocked) {
+      toast(data.message || "投稿OFFのため、本番投稿はしていません");
+    } else {
+      toast(sendEnabled ? `${providerLabel}に送信しました` : "投稿OFFのため、本番投稿はしていません");
+    }
     await loadPreviews();
   } catch (error) {
     toast(error.message || "外部投稿は実行されませんでした");
