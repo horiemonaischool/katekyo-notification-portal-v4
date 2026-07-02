@@ -101,6 +101,46 @@ function getVideoTitle(video) {
   return video?.name || video?.title || video?.video_name || video?.id || "名称未取得";
 }
 
+function secondsBetween(startedAt, endedAt) {
+  const start = startedAt ? new Date(startedAt).getTime() : NaN;
+  const end = endedAt ? new Date(endedAt).getTime() : NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+  return Math.floor((end - start) / 1000);
+}
+
+function numericDifference(start, end) {
+  const from = Number(start);
+  const to = Number(end);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return 0;
+  return Math.floor(to - from);
+}
+
+function watchSecondsFromLog(log) {
+  const direct = Number(
+    log.actual_watch_seconds ??
+    log.actualWatchSeconds ??
+    log.watch_seconds ??
+    log.watchSeconds ??
+    log.duration_seconds ??
+    log.durationSeconds ??
+    log.view_seconds ??
+    log.viewSeconds ??
+    log.play_seconds ??
+    log.playSeconds ??
+    log.duration ??
+    0
+  );
+  if (Number.isFinite(direct) && direct > 0) return Math.floor(direct);
+
+  const rangeSeconds = numericDifference(log.start ?? log.started ?? log.start_position, log.end ?? log.ended ?? log.end_position);
+  if (rangeSeconds > 0) return rangeSeconds;
+
+  return secondsBetween(
+    log.started_at ?? log.startedAt ?? log.start_time ?? log.startTime,
+    log.ended_at ?? log.endedAt ?? log.end_time ?? log.endTime
+  );
+}
+
 function readLogRows(response, usersById, videosById) {
   const rows = [];
   const userResults = Array.isArray(response) ? response : itemsFrom(response);
@@ -111,15 +151,8 @@ function readLogRows(response, usersById, videosById) {
     for (const log of logs) {
       const logUserId = log.user_id || log.userId || userId || "";
       const videoId = log.video_id || log.videoId || log.video?.id || "";
-      const watchedAt = log.watched_at || log.watchedAt || log.created_at || log.createdAt || log.updated_at || "";
-      const watchSeconds = Number(
-        log.actual_watch_seconds ??
-        log.actualWatchSeconds ??
-        log.watch_seconds ??
-        log.watchSeconds ??
-        log.duration ??
-        0
-      );
+      const watchedAt = log.watched_at || log.watchedAt || log.started_at || log.startedAt || log.created_at || log.createdAt || log.updated_at || "";
+      const watchSeconds = watchSecondsFromLog(log);
 
       rows.push({
         userId: logUserId,
