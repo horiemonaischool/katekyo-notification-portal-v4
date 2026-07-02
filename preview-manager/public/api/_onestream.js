@@ -135,6 +135,63 @@ function readLogRows(response, usersById, videosById) {
   return rows;
 }
 
+function primitivePreview(value) {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (/^[\w.+-]+@[\w.-]+$/.test(value)) return "[email]";
+    if (/^[0-9a-f-]{20,}$/i.test(value)) return "[id]";
+    return value.length > 80 ? `${value.slice(0, 80)}...` : value;
+  }
+  if (Array.isArray(value)) return `[array:${value.length}]`;
+  if (typeof value === "object") return `{object:${Object.keys(value).length}}`;
+  return String(value);
+}
+
+function flattenLogFields(log, prefix = "", output = {}) {
+  if (!log || typeof log !== "object" || Array.isArray(log)) return output;
+  for (const [key, value] of Object.entries(log)) {
+    const name = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      flattenLogFields(value, name, output);
+    } else {
+      output[name] = primitivePreview(value);
+    }
+  }
+  return output;
+}
+
+function looksLikeTimeField(name, value) {
+  const key = String(name || "").toLowerCase();
+  if (/(second|seconds|duration|watch|watched|play|played|view|viewed|progress|start|end|time|range|position)/.test(key)) {
+    return true;
+  }
+  return typeof value === "number" && value > 0 && value < 86400;
+}
+
+function extractRawLogs(response, limit = 3) {
+  const raw = [];
+  const userResults = Array.isArray(response) ? response : itemsFrom(response);
+  for (const userResult of userResults) {
+    const logs = Array.isArray(userResult?.logs) ? userResult.logs : [];
+    for (const log of logs) {
+      raw.push({
+        parentKeys: Object.keys(userResult || {}),
+        logKeys: Object.keys(log || {}),
+        flatFields: flattenLogFields(log),
+        timeCandidates: Object.entries(flattenLogFields(log))
+          .filter(([name, value]) => looksLikeTimeField(name, value))
+          .reduce((picked, [name, value]) => {
+            picked[name] = value;
+            return picked;
+          }, {})
+      });
+      if (raw.length >= limit) return raw;
+    }
+  }
+  return raw;
+}
+
 function durationText(seconds) {
   const total = Math.max(0, Number(seconds || 0));
   const hours = Math.floor(total / 3600);
@@ -255,7 +312,49 @@ async function fetchCompanyWatchSummary({ groupId, days = 14, pageSize = 50, max
   };
 }
 
+async function fetchWatchLogDebug({ groupId, days = 14, pageSize = 50, maxPages = 5, chunkSize = 30, maxVideoChunks = 0, sampleLimit = 3 }) {
+  if (!groupId) throw new Error("OneStreamグループIDが未設定です。");
+
+  const beforeDate = new Date();
+  const afterDate = new Date(beforeDate.getTime() - Number(days || 14) * 86400000);
+  const before = beforeDate.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const after = afterDate.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const users = await pagedItems("users", { query: { groupId }, pageSize, maxPages });
+  const videos = await pagedItems("videos", { pageSize, maxPages });
+  const userIds = users.map((user) => user.id).filter(Boolean);
+  const videoIds = videos.map((video) => video.id).filter(Boolean);
+  const userChunks = splitChunks(userIds, chunkSize);
+  let videoChunks = splitChunks(videoIds, chunkSize);
+  if (maxVideoChunks > 0) videoChunks = videoChunks.slice(0, maxVideoChunks);
+
+  let batchCount = 0;
+  let failedBatches = 0;
+  const samples = [];
+
+  for (const userChunk of userChunks) {
+    for (const videoChunk of videoChunks) {
+      batchCount += 1;
+      try {
+        const response = await oneStreamRequest("analytics/video_watch_logs", {
+          method: "POST",
+          body: { userIds: userChunk, videoIds: videoChunk, after, before },
+          timeoutMs: 30000
+        });
+        samples.push(...extractRawLogs(response, sampleLimit - samples.length));
+        if (samples.length >= sampleLimit) {
+          return { groupId, after, before, userCount: users.length, videoCount: videos.length, batchCount, failedBatches, samples };
+        }
+      } catch {
+        failedBatches += 1;
+      }
+    }
+  }
+
+  return { groupId, after, before, userCount: users.length, videoCount: videos.length, batchCount, failedBatches, samples };
+}
+
 module.exports = {
   fetchCompanyWatchSummary,
+  fetchWatchLogDebug,
   requireOneStreamConfig
 };
