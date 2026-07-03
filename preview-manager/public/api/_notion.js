@@ -11,6 +11,26 @@ const PROP_GROUP_ID = "OneStreamグループID";
 const PROP_GROUP_NAME = "OneStreamグループ名";
 const PROP_CHAT_SUPPORT = "チャットサポート";
 const PROP_LEARNER_COUNT = "受講者数";
+const PROP_CHATWORK_ROOM_ID_CANDIDATES = [
+  "ChatworkルームID",
+  "ChatworkルームId",
+  "Chatwork Room ID",
+  "Chatwork room ID",
+  "チャットワークルームID",
+  "チャットワークID",
+  "Chatwork ID",
+  "room_id",
+  "Room ID",
+  "通知先ルームID"
+];
+const PROP_SLACK_CHANNEL_ID_CANDIDATES = [
+  "SlackチャンネルID",
+  "Slack Channel ID",
+  "Slack channel ID",
+  "Slack ID",
+  "チャンネルID",
+  "通知先チャンネルID"
+];
 const PROP_OVERVIEW_CANDIDATES = ["概要", "備考", "メモ"];
 const PROP_MEETING_LAST_CANDIDATES = ["前回の面談日", "前回面談日", "最終面談日"];
 const PROP_MEETING_COUNT_CANDIDATES = ["総合面談実施回数", "面談実施回数", "面談回数"];
@@ -222,14 +242,43 @@ function stageFor(start, end) {
   return { id: "regular", label: "通常フォロー", milestone: false };
 }
 
-function detectDelivery(chatSupportUrl) {
+function normalizeId(value) {
+  return String(value || "").trim();
+}
+
+function extractChatworkRoomId(value) {
+  const text = String(value || "").trim();
+  if (/^\d+$/.test(text)) return text;
+  const match = text.match(/rid(\d+)/i) || text.match(/[?&]room_id=(\d+)/i) || text.match(/\/rooms\/(\d+)/i);
+  return match ? match[1] : "";
+}
+
+function extractSlackChannelId(value) {
+  const text = String(value || "").trim();
+  if (/^[CGD][A-Z0-9]{8,}$/.test(text)) return text;
+  const archiveMatch = text.match(/\/archives\/([CGD][A-Z0-9]+)/i);
+  if (archiveMatch) return archiveMatch[1];
+  const clientMatch = text.match(/\/client\/[A-Z0-9]+\/([CGD][A-Z0-9]+)/i);
+  if (clientMatch) return clientMatch[1];
+  const queryMatch = text.match(/[?&](?:channel|channel_id)=([CGD][A-Z0-9]+)/i);
+  return queryMatch ? queryMatch[1] : "";
+}
+
+function detectDelivery(chatSupportUrl, chatworkRoomId = "", slackChannelId = "") {
   const url = String(chatSupportUrl || "").trim();
+  const roomId = extractChatworkRoomId(chatworkRoomId) || extractChatworkRoomId(url);
+  const channelId = extractSlackChannelId(slackChannelId) || extractSlackChannelId(url);
   if (/chatwork\.com/i.test(url)) {
-    const roomMatch = url.match(/rid(\d+)/i) || url.match(/[?&]room_id=(\d+)/i);
-    return { type: "chatwork", destination: "Notionチャットサポート", roomId: roomMatch ? roomMatch[1] : "", channelId: "" };
+    return { type: "chatwork", destination: "Notionチャットサポート", roomId, channelId: "" };
   }
   if (/slack\.com/i.test(url)) {
-    return { type: "slack", destination: "Notionチャットサポート", roomId: "", channelId: "" };
+    return { type: "slack", destination: "Notionチャットサポート", roomId: "", channelId };
+  }
+  if (roomId) {
+    return { type: "chatwork", destination: "Notionチャットサポート", roomId, channelId: "" };
+  }
+  if (channelId) {
+    return { type: "slack", destination: "Notionチャットサポート", roomId: "", channelId };
   }
   return { type: "none", destination: "", roomId: "", channelId: "" };
 }
@@ -262,6 +311,8 @@ function pageToPreview(page) {
   const groupId = textValue(prop(page, PROP_GROUP_ID));
   const groupName = textValue(prop(page, PROP_GROUP_NAME));
   const chatSupportUrl = textValue(prop(page, PROP_CHAT_SUPPORT));
+  const chatworkRoomId = normalizeId(textValue(propAny(page, PROP_CHATWORK_ROOM_ID_CANDIDATES)));
+  const slackChannelId = normalizeId(textValue(propAny(page, PROP_SLACK_CHANNEL_ID_CANDIDATES)));
   const overview = textValue(propAny(page, PROP_OVERVIEW_CANDIDATES));
   const meeting = {
     lastDate: dateText(propAny(page, PROP_MEETING_LAST_CANDIDATES)),
@@ -279,7 +330,7 @@ function pageToPreview(page) {
     notionPageId: page.id,
     company,
     status: "needs_review",
-    delivery: detectDelivery(chatSupportUrl),
+    delivery: detectDelivery(chatSupportUrl, chatworkRoomId, slackChannelId),
     contract: { start, end },
     stage: stageFor(start, end),
     target: {
