@@ -88,12 +88,12 @@ function json(res, statusCode, body) {
   res.end(JSON.stringify(body));
 }
 
-function notionRequest(pathname, body) {
+function notionRequestMethod(method, pathname, body) {
   return new Promise((resolve, reject) => {
     const token = process.env.NOTION_API_TOKEN || "";
     const payload = body ? JSON.stringify(body) : "";
     const request = https.request({
-      method: body ? "POST" : "GET",
+      method,
       hostname: "api.notion.com",
       path: `/v1/${pathname}`,
       headers: {
@@ -130,6 +130,10 @@ function notionRequest(pathname, body) {
   });
 }
 
+function notionRequest(pathname, body) {
+  return notionRequestMethod(body ? "POST" : "GET", pathname, body);
+}
+
 function requireNotionConfig() {
   const token = process.env.NOTION_API_TOKEN || "";
   const databaseId = process.env.NOTION_DATABASE_ID || "";
@@ -149,6 +153,34 @@ function propAny(page, names) {
     if (value) return value;
   }
   return null;
+}
+
+function propNameAny(page, names) {
+  for (const name of names) {
+    if (page.properties?.[name]) return name;
+  }
+  return "";
+}
+
+function propertyValueForWrite(property, value) {
+  const text = String(value || "").trim();
+  if (!property) return null;
+  if (property.type === "rich_text") return { rich_text: text ? [{ text: { content: text } }] : [] };
+  if (property.type === "url") return { url: text || null };
+  if (property.type === "number") {
+    const number = Number(text);
+    return { number: Number.isFinite(number) ? number : null };
+  }
+  if (property.type === "email") return { email: text || null };
+  if (property.type === "phone_number") return { phone_number: text || null };
+  return null;
+}
+
+function setWritableProperty(properties, page, name, value) {
+  const writeValue = propertyValueForWrite(page.properties?.[name], value);
+  if (!writeValue) return false;
+  properties[name] = writeValue;
+  return true;
 }
 
 function textValue(property) {
@@ -314,6 +346,14 @@ function extractSlackChannelId(value) {
   return queryMatch ? queryMatch[1] : "";
 }
 
+function chatworkUrlForRoomId(roomId) {
+  return roomId ? `https://www.chatwork.com/#!rid${roomId}` : "";
+}
+
+function slackUrlForChannelId(channelId) {
+  return channelId ? `https://slack.com/app_redirect?channel=${encodeURIComponent(channelId)}` : "";
+}
+
 function detectDelivery(chatSupportUrl, chatworkRoomId = "", slackChannelId = "") {
   const url = String(chatSupportUrl || "").trim();
   const roomId = extractChatworkRoomId(chatworkRoomId) || extractChatworkRoomId(url);
@@ -331,6 +371,27 @@ function detectDelivery(chatSupportUrl, chatworkRoomId = "", slackChannelId = ""
     return { type: "slack", destination: "Notionチャットサポート", roomId: "", channelId };
   }
   return { type: "none", destination: "", roomId: "", channelId: "" };
+}
+
+function deliveryPropertiesForPage(page, delivery = {}) {
+  const properties = {};
+  const type = String(delivery.type || "none").trim();
+  const roomId = extractChatworkRoomId(delivery.roomId || delivery.destination || "");
+  const channelId = extractSlackChannelId(delivery.channelId || delivery.destination || "");
+
+  if (type === "chatwork" && roomId) {
+    const roomName = propNameAny(page, PROP_CHATWORK_ROOM_ID_CANDIDATES);
+    if (roomName) setWritableProperty(properties, page, roomName, roomId);
+    setWritableProperty(properties, page, PROP_CHAT_SUPPORT, chatworkUrlForRoomId(roomId));
+  }
+
+  if (type === "slack" && channelId) {
+    const channelName = propNameAny(page, PROP_SLACK_CHANNEL_ID_CANDIDATES);
+    if (channelName) setWritableProperty(properties, page, channelName, channelId);
+    setWritableProperty(properties, page, PROP_CHAT_SUPPORT, slackUrlForChannelId(channelId));
+  }
+
+  return properties;
 }
 
 function hashId(id) {
@@ -472,9 +533,11 @@ function filterPreviews(previews, query) {
 
 module.exports = {
   countsFor,
+  deliveryPropertiesForPage,
   filterPreviews,
   json,
   notionRequest,
+  notionRequestMethod,
   pageToPreview,
   queryCompanyPages,
   requireNotionConfig
