@@ -13,22 +13,51 @@ const PROP_CHAT_SUPPORT = "チャットサポート";
 const PROP_LEARNER_COUNT = "受講者数";
 const PROP_CHATWORK_ROOM_ID_CANDIDATES = [
   "ChatworkルームID",
+  "ChatworkルームＩＤ",
   "ChatworkルームId",
   "Chatwork Room ID",
+  "Chatwork RoomId",
   "Chatwork room ID",
+  "Chatwork room_id",
+  "Chatworkルーム",
+  "Chatworkルーム番号",
+  "ChatworkグループID",
   "チャットワークルームID",
+  "チャットワークルームＩＤ",
   "チャットワークID",
+  "チャットワークＩＤ",
+  "チャットワークルーム",
+  "チャットワークルーム番号",
+  "CWルームID",
+  "CWルームＩＤ",
+  "CW Room ID",
+  "CW ID",
   "Chatwork ID",
+  "ChatworkURL",
+  "Chatwork URL",
+  "チャットワークURL",
   "room_id",
   "Room ID",
+  "ルームID",
+  "ルームＩＤ",
+  "ルーム番号",
+  "通知先ID",
   "通知先ルームID"
 ];
 const PROP_SLACK_CHANNEL_ID_CANDIDATES = [
   "SlackチャンネルID",
+  "SlackチャンネルＩＤ",
   "Slack Channel ID",
+  "Slack ChannelId",
   "Slack channel ID",
+  "Slack channel_id",
   "Slack ID",
+  "Slack URL",
+  "SlackURL",
   "チャンネルID",
+  "チャンネルＩＤ",
+  "チャンネル番号",
+  "通知先ID",
   "通知先チャンネルID"
 ];
 const PROP_OVERVIEW_CANDIDATES = ["概要", "備考", "メモ"];
@@ -131,6 +160,27 @@ function textValue(property) {
   if (property.type === "url") return (property.url || "").trim();
   if (property.type === "number") return property.number == null ? "" : String(property.number);
   if (property.type === "formula") return formulaValue(property.formula);
+  if (property.type === "phone_number") return (property.phone_number || "").trim();
+  if (property.type === "email") return (property.email || "").trim();
+  if (property.type === "rollup") return rollupValue(property.rollup);
+  if (property.type === "unique_id") {
+    const prefix = property.unique_id?.prefix || "";
+    const number = property.unique_id?.number;
+    return number == null ? "" : `${prefix}${number}`;
+  }
+  return "";
+}
+
+function rollupValue(rollup) {
+  if (!rollup) return "";
+  if (rollup.type === "number") return rollup.number == null ? "" : String(rollup.number);
+  if (rollup.type === "date") return rollup.date?.start || "";
+  if (rollup.type === "array") {
+    return (rollup.array || [])
+      .map((item) => textValue(item))
+      .filter(Boolean)
+      .join(" ");
+  }
   return "";
 }
 
