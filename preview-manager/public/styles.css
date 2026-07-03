@@ -752,6 +752,34 @@ tr:last-child td {
   color: var(--red);
 }
 
+.sync-run-result {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  padding: 20px 40px;
+}
+
+.sync-run-result h3 {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.sync-run-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sync-run-row {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
 .recommendation,
 .activity,
 .note-box {
