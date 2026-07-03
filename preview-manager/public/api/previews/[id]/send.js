@@ -138,6 +138,27 @@ async function loadPreview(pageId) {
   return pageToPreview(page);
 }
 
+function previewWithBodyOverrides(preview, body) {
+  const override = body.preview && typeof body.preview === "object" ? body.preview : {};
+  const message = typeof body.message === "string" ? body.message : override.message;
+  return {
+    ...preview,
+    delivery: {
+      ...(preview.delivery || {}),
+      ...(override.delivery || {})
+    },
+    stats: {
+      ...(preview.stats || {}),
+      ...(override.stats || {})
+    },
+    learners: Array.isArray(override.learners) ? override.learners : preview.learners,
+    recommendations: Array.isArray(override.recommendations) ? override.recommendations : preview.recommendations,
+    risks: Array.isArray(override.risks) ? override.risks : preview.risks,
+    notes: typeof override.notes === "string" ? override.notes : preview.notes,
+    message: typeof message === "string" && message.trim() ? message : preview.message
+  };
+}
+
 async function sendChatwork(preview, body) {
   if (!truthy(process.env.CHATWORK_ENABLE_POSTING)) {
     return {
@@ -228,7 +249,7 @@ module.exports = async function handler(req, res) {
     }
 
     const body = await readBody(req);
-    const preview = await loadPreview(pageId);
+    const preview = previewWithBodyOverrides(await loadPreview(pageId), body);
     const deliveryType = preview.delivery?.type || "none";
     let result;
     if (deliveryType === "chatwork") {
