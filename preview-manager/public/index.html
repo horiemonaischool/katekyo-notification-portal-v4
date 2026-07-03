@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>カテキョ通知プレビュー</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">K</div>
+        <div>
+          <h1>カテキョ通知プレビュー</h1>
+          <p>
+            <span id="cycleLabel">読み込み中</span>
+            <span id="postingStatus" class="posting-status posting-off">投稿OFF</span>
+            <span id="notionStatus" class="posting-status posting-off">Notion未確認</span>
+          </p>
+        </div>
+      </div>
+      <div class="operator-box">
+        <label for="operatorName">操作ユーザー</label>
+        <select id="operatorName">
+          <option value="">選択</option>
+          <option value="大島">大島</option>
+          <option value="永島">永島</option>
+          <option value="中川">中川</option>
+        </select>
+        <button id="syncDashboardButton" class="ghost-button" type="button">同期予定</button>
+        <button id="refreshButton" class="ghost-button" type="button">更新</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <section class="summary-strip" aria-label="状態別件数">
+          <button class="count-pill active" data-status="">
+            <span>全体</span><strong id="countAll">0</strong>
+          </button>
+          <button class="count-pill" data-status="needs_review">
+            <span>要確認</span><strong id="countNeeds">0</strong>
+          </button>
+          <button class="count-pill" data-status="approved">
+            <span>送信OK</span><strong id="countApproved">0</strong>
+          </button>
+          <button class="count-pill" data-status="skipped">
+            <span>送らない</span><strong id="countSkipped">0</strong>
+          </button>
+        </section>
+
+        <div class="filters">
+          <input id="searchInput" placeholder="企業名で検索">
+          <select id="deliveryFilter">
+            <option value="">通知方法すべて</option>
+            <option value="slack">Slack</option>
+            <option value="chatwork">Chatwork</option>
+            <option value="none">未設定</option>
+          </select>
+          <select id="stageFilter">
+            <option value="">受講ステージすべて</option>
+            <option value="start_recent">開始直後</option>
+            <option value="two_weeks">開始2週間前後</option>
+            <option value="one_month">開始1か月前後</option>
+            <option value="three_months">開始3か月前後</option>
+            <option value="six_months">開始6か月前後</option>
+            <option value="nine_months">開始9か月前後</option>
+            <option value="ending_soon">終了1か月前</option>
+            <option value="ending_final">終了直前</option>
+            <option value="regular">通常フォロー</option>
+            <option value="missing_start">開始日未設定</option>
+          </select>
+        </div>
+
+        <div id="previewList" class="preview-list" aria-live="polite"></div>
+      </aside>
+
+      <section class="detail" id="detailPanel">
+        <div class="empty-state">
+          <h2>企業を選択</h2>
+          <p>左の一覧からプレビューを開いてください。</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/browser.js"></script>
+</body>
+</html>
