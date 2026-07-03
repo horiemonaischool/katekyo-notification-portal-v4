@@ -8,6 +8,7 @@ const state = {
   stageFilter: "",
   search: "",
   detail: null,
+  syncPlan: null,
   fetchingWatchId: "",
   localOverrides: loadLocalOverrides(),
   config: {
@@ -36,6 +37,7 @@ const els = {
   postingStatus: document.getElementById("postingStatus"),
   notionStatus: document.getElementById("notionStatus"),
   operatorName: document.getElementById("operatorName"),
+  syncDashboardButton: document.getElementById("syncDashboardButton"),
   refreshButton: document.getElementById("refreshButton"),
   searchInput: document.getElementById("searchInput"),
   deliveryFilter: document.getElementById("deliveryFilter"),
@@ -426,6 +428,10 @@ function renderList() {
           <span>次回 ${escapeHtml(meetingValue(preview.meeting?.nextDate))}</span>
         </div>
         <div class="preview-meta">
+          <span>同期 ${escapeHtml(preview.sync?.group || "-")}</span>
+          <span>次回 ${escapeHtml(preview.sync?.nextDate || "-")}</span>
+        </div>
+        <div class="preview-meta">
           <span>${escapeHtml(deliveryLabels[deliveryType] || deliveryType)}</span>
           <span>視聴 ${preview.stats.activeUsers}/${preview.stats.registeredUsers}人</span>
           <span>${preview.stats.totalLogs}件</span>
@@ -531,6 +537,9 @@ function renderDetail() {
               <div class="metric"><span>前回面談日</span><strong>${escapeHtml(meetingValue(meeting.lastDate))}</strong></div>
               <div class="metric"><span>総合面談回数</span><strong>${escapeHtml(meetingCountText(meeting.totalCount))}</strong></div>
               <div class="metric"><span>次回面談予定日</span><strong>${escapeHtml(meetingValue(meeting.nextDate))}</strong></div>
+              <div class="metric"><span>同期グループ</span><strong>${escapeHtml(preview.sync?.group || "-")}</strong></div>
+              <div class="metric"><span>次回取得予定</span><strong>${escapeHtml(preview.sync?.nextDate || "-")}</strong></div>
+              <div class="metric"><span>最終取得状態</span><strong>${escapeHtml(preview.sync?.status || "未取得")}</strong></div>
             </div>
             <div class="preview-meta">
               <span>期間 ${escapeHtml(formatPeriod(preview.stats.periodStart, preview.stats.periodEnd))}</span>
@@ -635,6 +644,83 @@ function renderDetail() {
       </div>
     </div>
   `;
+}
+
+function syncRiskText(company) {
+  const risks = company.risks || [];
+  if (risks.includes("OneStreamグループID未設定")) return "OneStream ID未設定";
+  if ((company.deliveryType || "none") === "none") return "通知先未設定";
+  return "準備OK";
+}
+
+function syncRiskClass(company) {
+  const text = syncRiskText(company);
+  if (text === "準備OK") return "sync-ok";
+  if (text === "通知先未設定") return "sync-warning";
+  return "sync-danger";
+}
+
+function renderSyncDashboard(plan) {
+  const days = plan.days || [];
+  const dayCards = days.map((day) => {
+    const companies = (day.companies || []).slice(0, 12).map((company) => `
+      <button class="sync-company" data-id="${escapeHtml(company.id)}" type="button">
+        <span>${escapeHtml(company.company)}</span>
+        <strong class="${syncRiskClass(company)}">${escapeHtml(syncRiskText(company))}</strong>
+      </button>
+    `).join("");
+    const hiddenCount = Math.max(0, Number(day.count || 0) - 12);
+    return `
+      <section class="sync-day">
+        <div class="sync-day-head">
+          <div>
+            <h3>${escapeHtml(day.date)} / ${escapeHtml(day.label)}</h3>
+            <p>${day.count}社更新予定</p>
+          </div>
+          <div class="sync-counts">
+            <span class="sync-ok">準備OK ${day.readyCount}</span>
+            <span class="sync-warning">通知先未設定 ${day.missingDeliveryCount}</span>
+            <span class="sync-danger">OneStream未設定 ${day.missingGroupCount}</span>
+          </div>
+        </div>
+        <div class="sync-company-list">
+          ${companies || "<p class=\"muted\">対象企業なし</p>"}
+          ${hiddenCount ? `<p class="muted">ほか ${hiddenCount}社</p>` : ""}
+        </div>
+      </section>
+    `;
+  }).join("");
+
+  els.detailPanel.innerHTML = `
+    <div class="detail-shell sync-dashboard">
+      <div class="detail-head">
+        <div class="detail-title">
+          <h2>同期予定ダッシュボード</h2>
+          <div class="detail-sub">
+            <span class="delivery-badge">${escapeHtml(plan.cycle || "10営業日サイクル")}</span>
+            <span>対象 ${plan.totalCompanies || 0}社</span>
+            <span>1営業日あたり目安 ${plan.dailyTarget || 0}社</span>
+            <span>今日 ${escapeHtml(plan.today || "-")}</span>
+          </div>
+        </div>
+        <div class="detail-actions">
+          <button class="ghost-button" id="backToSelectedButton" type="button">企業詳細へ戻る</button>
+          <button class="neutral-button" id="reloadSyncPlanButton" type="button">同期予定を更新</button>
+        </div>
+      </div>
+      <div class="sync-grid">${dayCards}</div>
+    </div>
+  `;
+}
+
+async function loadSyncDashboard() {
+  try {
+    const plan = await api("/api/sync-plan");
+    state.syncPlan = plan;
+    renderSyncDashboard(plan);
+  } catch (error) {
+    toast(error.message || "同期予定の取得に失敗しました");
+  }
 }
 
 function buildWatchMessage(preview, result) {
@@ -876,6 +962,12 @@ async function testIntegration(provider) {
 }
 
 document.addEventListener("click", (event) => {
+  const syncCompanyButton = event.target.closest(".sync-company");
+  if (syncCompanyButton) {
+    loadDetail(syncCompanyButton.dataset.id).catch((error) => toast(error.message));
+    return;
+  }
+
   const previewButton = event.target.closest(".preview-item");
   if (previewButton) {
     loadDetail(previewButton.dataset.id).catch((error) => toast(error.message));
@@ -933,9 +1025,20 @@ document.addEventListener("click", (event) => {
 
   if (event.target.id === "fetchWatchButton") {
     fetchWatchHistory();
+    return;
+  }
+
+  if (event.target.id === "reloadSyncPlanButton") {
+    loadSyncDashboard();
+    return;
+  }
+
+  if (event.target.id === "backToSelectedButton") {
+    renderDetail();
   }
 });
 
+els.syncDashboardButton.addEventListener("click", () => loadSyncDashboard());
 els.refreshButton.addEventListener("click", () => loadPreviews().catch((error) => toast(error.message)));
 els.operatorName.addEventListener("change", saveOperator);
 els.operatorName.addEventListener("blur", saveOperator);
