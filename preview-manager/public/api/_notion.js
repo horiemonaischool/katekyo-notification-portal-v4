@@ -64,6 +64,24 @@ const PROP_OVERVIEW_CANDIDATES = ["概要", "備考", "メモ"];
 const PROP_MEETING_LAST_CANDIDATES = ["前回の面談日", "前回面談日", "最終面談日"];
 const PROP_MEETING_COUNT_CANDIDATES = ["総合面談実施回数", "面談実施回数", "面談回数"];
 const PROP_MEETING_NEXT_CANDIDATES = ["次回面談予定日", "次回面談日", "次回の面談日"];
+const PROP_SYNC_GROUP_CANDIDATES = ["同期グループ", "自動同期グループ", "OneStream同期グループ"];
+const PROP_SYNC_NEXT_CANDIDATES = ["次回視聴履歴取得日", "次回OneStream取得日", "次回同期日"];
+const PROP_SYNC_LAST_CANDIDATES = ["最終視聴履歴取得日", "最終OneStream取得日", "最終同期日"];
+const PROP_SYNC_STATUS_CANDIDATES = ["最終取得ステータス", "最終同期ステータス", "同期ステータス"];
+const PROP_AUTO_SYNC_CANDIDATES = ["自動同期対象", "OneStream自動同期対象"];
+
+const SYNC_SLOT_LABELS = [
+  "A週 月曜",
+  "A週 火曜",
+  "A週 水曜",
+  "A週 木曜",
+  "A週 金曜",
+  "B週 月曜",
+  "B週 火曜",
+  "B週 水曜",
+  "B週 木曜",
+  "B週 金曜"
+];
 
 const FC_EXCEPTIONS = ["FCSMG", "ミックス(30%)", "FC税理士校"];
 const COMPANY_BLACKLIST = ["和同情報システム株式会社", "株式会社トライスパイド"];
@@ -267,6 +285,56 @@ function parseYmd(value) {
   return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
 
+function ymdFromUtcMs(ms) {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function addDaysYmd(ymd, days) {
+  const time = parseYmd(ymd);
+  if (time === null) return "";
+  return ymdFromUtcMs(time + days * 86400000);
+}
+
+function isBusinessYmd(ymd) {
+  const time = parseYmd(ymd);
+  if (time === null) return false;
+  const day = new Date(time).getUTCDay();
+  return day >= 1 && day <= 5;
+}
+
+function businessDaysBetween(anchorYmd, targetYmd) {
+  let current = anchorYmd;
+  let count = 0;
+  const targetTime = parseYmd(targetYmd);
+  const anchorTime = parseYmd(anchorYmd);
+  if (targetTime === null || anchorTime === null || targetTime < anchorTime) return 0;
+  while (parseYmd(current) < targetTime) {
+    current = addDaysYmd(current, 1);
+    if (isBusinessYmd(current)) count += 1;
+  }
+  return count;
+}
+
+function slotForDate(ymd) {
+  const anchor = process.env.KATEKYO_SYNC_ANCHOR_DATE || "2026-07-06";
+  const index = businessDaysBetween(anchor, ymd) % SYNC_SLOT_LABELS.length;
+  return { index, label: SYNC_SLOT_LABELS[index] };
+}
+
+function nextDateForSlot(slotIndex, fromYmd = todayYmdInJst()) {
+  let current = fromYmd;
+  for (let i = 0; i < 21; i += 1) {
+    if (isBusinessYmd(current) && slotForDate(current).index === slotIndex) return current;
+    current = addDaysYmd(current, 1);
+  }
+  return "";
+}
+
+function hashSlot(id) {
+  const hex = hashId(id || "");
+  return parseInt(hex.slice(0, 8), 16) % SYNC_SLOT_LABELS.length;
+}
+
 function diffDays(fromYmd, toYmd = todayYmdInJst()) {
   const from = parseYmd(fromYmd);
   const to = parseYmd(toYmd);
@@ -425,6 +493,13 @@ function pageToPreview(page) {
   const chatworkRoomId = normalizeId(textValue(propAny(page, PROP_CHATWORK_ROOM_ID_CANDIDATES)));
   const slackChannelId = normalizeId(textValue(propAny(page, PROP_SLACK_CHANNEL_ID_CANDIDATES)));
   const overview = textValue(propAny(page, PROP_OVERVIEW_CANDIDATES));
+  const derivedSlot = hashSlot(page.id || company);
+  const syncGroupText = textValue(propAny(page, PROP_SYNC_GROUP_CANDIDATES));
+  const syncNextDate = dateText(propAny(page, PROP_SYNC_NEXT_CANDIDATES));
+  const syncLastDate = dateText(propAny(page, PROP_SYNC_LAST_CANDIDATES));
+  const syncStatus = textValue(propAny(page, PROP_SYNC_STATUS_CANDIDATES));
+  const autoSyncText = textValue(propAny(page, PROP_AUTO_SYNC_CANDIDATES));
+  const autoSync = !/^(false|0|no|off|対象外)$/i.test(String(autoSyncText || "").trim());
   const meeting = {
     lastDate: dateText(propAny(page, PROP_MEETING_LAST_CANDIDATES)),
     totalCount: numberValue(propAny(page, PROP_MEETING_COUNT_CANDIDATES)),
@@ -444,6 +519,14 @@ function pageToPreview(page) {
     delivery: detectDelivery(chatSupportUrl, chatworkRoomId, slackChannelId),
     contract: { start, end },
     stage: stageFor(start, end),
+    sync: {
+      slot: derivedSlot,
+      group: syncGroupText || SYNC_SLOT_LABELS[derivedSlot],
+      nextDate: syncNextDate || nextDateForSlot(derivedSlot),
+      lastDate: syncLastDate || "",
+      status: syncStatus || "未取得",
+      autoSync
+    },
     target: {
       eligible: excludedReasons.length === 0,
       excludedReasons
@@ -517,6 +600,47 @@ function countsFor(previews) {
   }, {});
 }
 
+function buildSyncPlan(previews, today = todayYmdInJst()) {
+  const eligible = previews.filter((preview) => preview.target?.eligible && preview.sync?.autoSync !== false);
+  const days = [];
+  let current = today;
+  while (days.length < SYNC_SLOT_LABELS.length) {
+    if (isBusinessYmd(current)) {
+      const slot = slotForDate(current);
+      const companies = eligible
+        .filter((preview) => Number(preview.sync?.slot) === slot.index)
+        .sort((a, b) => a.company.localeCompare(b.company, "ja"));
+      days.push({
+        date: current,
+        slot: slot.index,
+        label: slot.label,
+        count: companies.length,
+        readyCount: companies.filter((preview) => preview.delivery?.type !== "none" && !preview.risks?.includes("OneStreamグループID未設定")).length,
+        missingDeliveryCount: companies.filter((preview) => preview.delivery?.type === "none").length,
+        missingGroupCount: companies.filter((preview) => preview.risks?.includes("OneStreamグループID未設定")).length,
+        companies: companies.map((preview) => ({
+          id: preview.id,
+          company: preview.company,
+          deliveryType: preview.delivery?.type || "none",
+          nextDate: preview.sync?.nextDate || current,
+          lastDate: preview.sync?.lastDate || "",
+          status: preview.sync?.status || "未取得",
+          risks: preview.risks || []
+        }))
+      });
+    }
+    current = addDaysYmd(current, 1);
+  }
+
+  return {
+    today,
+    cycle: "10営業日で1周（各企業は約2週間に1回）",
+    dailyTarget: Math.ceil(eligible.length / SYNC_SLOT_LABELS.length),
+    totalCompanies: eligible.length,
+    days
+  };
+}
+
 function filterPreviews(previews, query) {
   const status = query.get("status") || "";
   const delivery = query.get("delivery") || "";
@@ -533,6 +657,7 @@ function filterPreviews(previews, query) {
 
 module.exports = {
   countsFor,
+  buildSyncPlan,
   deliveryPropertiesForPage,
   filterPreviews,
   json,
