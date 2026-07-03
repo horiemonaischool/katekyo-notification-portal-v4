@@ -40,6 +40,18 @@ function compactSummary(result) {
   };
 }
 
+function displayRowFromPreview(preview, status = "pending", extra = {}) {
+  return {
+    id: preview.id,
+    company: preview.company,
+    groupId: preview.notionMeta?.groupId || "",
+    deliveryType: preview.delivery?.type || "none",
+    targetStatus: targetStatus(preview),
+    status,
+    ...extra
+  };
+}
+
 function targetStatus(preview) {
   const risks = preview.risks || [];
   if (risks.includes("OneStreamグループID未設定")) return "onestream_missing";
@@ -65,14 +77,8 @@ async function buildSyncRunResponse(query, previews) {
 
   const results = [];
   for (const preview of selected) {
-    const groupId = preview.notionMeta?.groupId || "";
-    const base = {
-      id: preview.id,
-      company: preview.company,
-      groupId,
-      deliveryType: preview.delivery?.type || "none",
-      targetStatus: targetStatus(preview)
-    };
+    const base = displayRowFromPreview(preview);
+    const groupId = base.groupId || "";
 
     if (!run) {
       results.push({ ...base, status: "dry_run" });
@@ -123,6 +129,7 @@ async function buildSyncRunResponse(query, previews) {
     totalEligibleCompanies: eligible.length,
     totalTargets: targets.length,
     selectedCount: selected.length,
+    displayRows: selected.map((preview) => displayRowFromPreview(preview, run ? "queued" : "dry_run")),
     results
   };
 }
