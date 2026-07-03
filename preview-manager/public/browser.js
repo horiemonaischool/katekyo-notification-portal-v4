@@ -663,12 +663,19 @@ function syncRiskClass(company) {
 
 function renderSyncRunResult(result) {
   if (!result) return "";
-  const rows = (result.results || []).slice(0, 12).map((item) => {
+  const fallbackRows = (state.syncPlan?.days || [])
+    .find((day) => day.date === result.date && Number(day.slot) === Number(result.slot?.index))
+    ?.companies?.slice(0, Number(result.selectedCount || 0)) || [];
+  const items = (result.results && result.results.length ? result.results : result.displayRows && result.displayRows.length ? result.displayRows : fallbackRows)
+    .slice(0, 12);
+  const rows = items.map((item) => {
     const summary = item.summary || {};
     const statusText = item.status === "fetched"
       ? `取得 ${summary.activeUsers || 0}/${summary.userCount || 0}人 ${summary.totalLogs || 0}件 ${summary.totalWatchTime || ""}`
       : item.status === "dry_run"
         ? syncRiskText(item)
+        : item.status === "queued"
+          ? "取得対象"
         : item.error || item.status;
     const className = item.status === "fetched" || statusText === "準備OK"
       ? "sync-ok"
@@ -684,16 +691,17 @@ function renderSyncRunResult(result) {
       </div>
     `;
   }).join("");
+  const resultCount = Array.isArray(result.results) ? result.results.length : 0;
 
   return `
     <section class="sync-run-result">
       <div>
         <h3>${result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
-        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || "-")} / 対象 ${result.totalTargets || 0}社 / 表示 ${result.selectedCount || 0}社</p>
+        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || "-")} / 対象 ${result.totalTargets || 0}社 / 表示 ${result.selectedCount || 0}社 / 結果 ${resultCount}件</p>
         <p class="muted">${escapeHtml(result.note || "")}</p>
       </div>
       <div class="sync-run-list">
-        ${rows || "<p class=\"muted\">対象企業なし</p>"}
+        ${rows || "<p class=\"muted\">対象企業はありますが、結果行を取得できませんでした。同期予定を更新してから再度お試しください。</p>"}
       </div>
     </section>
   `;
