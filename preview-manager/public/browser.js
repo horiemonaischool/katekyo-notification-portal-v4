@@ -9,6 +9,7 @@ const state = {
   search: "",
   detail: null,
   syncPlan: null,
+  syncRunResult: null,
   fetchingWatchId: "",
   localOverrides: loadLocalOverrides(),
   config: {
@@ -660,6 +661,44 @@ function syncRiskClass(company) {
   return "sync-danger";
 }
 
+function renderSyncRunResult(result) {
+  if (!result) return "";
+  const rows = (result.results || []).slice(0, 12).map((item) => {
+    const summary = item.summary || {};
+    const statusText = item.status === "fetched"
+      ? `取得 ${summary.activeUsers || 0}/${summary.userCount || 0}人 ${summary.totalLogs || 0}件 ${summary.totalWatchTime || ""}`
+      : item.status === "dry_run"
+        ? syncRiskText(item)
+        : item.error || item.status;
+    const className = item.status === "fetched" || statusText === "準備OK"
+      ? "sync-ok"
+      : item.status === "skipped" || item.targetStatus === "delivery_missing"
+        ? "sync-warning"
+        : item.status === "error" || item.targetStatus === "onestream_missing"
+          ? "sync-danger"
+          : "";
+    return `
+      <div class="sync-run-row">
+        <span>${escapeHtml(item.company)}</span>
+        <strong class="${className}">${escapeHtml(statusText)}</strong>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <section class="sync-run-result">
+      <div>
+        <h3>${result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
+        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || "-")} / 対象 ${result.totalTargets || 0}社 / 表示 ${result.selectedCount || 0}社</p>
+        <p class="muted">${escapeHtml(result.note || "")}</p>
+      </div>
+      <div class="sync-run-list">
+        ${rows || "<p class=\"muted\">対象企業なし</p>"}
+      </div>
+    </section>
+  `;
+}
+
 function renderSyncDashboard(plan) {
   const days = plan.days || [];
   const dayCards = days.map((day) => {
@@ -705,9 +744,12 @@ function renderSyncDashboard(plan) {
         </div>
         <div class="detail-actions">
           <button class="ghost-button" id="backToSelectedButton" type="button">企業詳細へ戻る</button>
+          <button class="ghost-button" id="checkSyncTodayButton" type="button">今日の対象確認</button>
+          <button class="neutral-button" id="runSyncTestButton" type="button">取得テスト3社</button>
           <button class="neutral-button" id="reloadSyncPlanButton" type="button">同期予定を更新</button>
         </div>
       </div>
+      ${renderSyncRunResult(state.syncRunResult)}
       <div class="sync-grid">${dayCards}</div>
     </div>
   `;
@@ -720,6 +762,20 @@ async function loadSyncDashboard() {
     renderSyncDashboard(plan);
   } catch (error) {
     toast(error.message || "同期予定の取得に失敗しました");
+  }
+}
+
+async function runSyncPreview({ run = false } = {}) {
+  try {
+    const path = run
+      ? "/api/sync-run?run=1&limit=3&maxVideoChunks=1"
+      : "/api/sync-run?dryRun=1&limit=50";
+    const result = await api(path);
+    state.syncRunResult = result;
+    if (state.syncPlan) renderSyncDashboard(state.syncPlan);
+    toast(run ? "今日の取得テストが完了しました" : "今日の同期対象を確認しました");
+  } catch (error) {
+    toast(error.message || "同期テストに失敗しました");
   }
 }
 
@@ -1030,6 +1086,16 @@ document.addEventListener("click", (event) => {
 
   if (event.target.id === "reloadSyncPlanButton") {
     loadSyncDashboard();
+    return;
+  }
+
+  if (event.target.id === "checkSyncTodayButton") {
+    runSyncPreview({ run: false });
+    return;
+  }
+
+  if (event.target.id === "runSyncTestButton") {
+    runSyncPreview({ run: true });
     return;
   }
 
