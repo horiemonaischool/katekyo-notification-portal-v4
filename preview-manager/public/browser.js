@@ -11,6 +11,7 @@ const state = {
   syncPlan: null,
   syncRunResult: null,
   syncRunLoading: false,
+  syncRunStartedAt: 0,
   fetchingWatchId: "",
   localOverrides: loadLocalOverrides(),
   config: {
@@ -694,17 +695,33 @@ function renderSyncRunResult(result) {
       </tr>
     `;
   }).join("");
+  const plainRows = (items.length ? items : (result.results || []))
+    .slice(0, 12)
+    .map((item, index) => {
+      const summary = item.summary || {};
+      const label = item.status === "fetched"
+        ? `取得 ${summary.activeUsers || 0}/${summary.userCount || 0}人 ${summary.totalLogs || 0}件 ${summary.totalWatchTime || ""}`
+        : item.status === "dry_run"
+          ? syncRiskText(item)
+          : item.status === "queued"
+            ? "取得対象"
+            : item.error || item.status || "-";
+      return `${index + 1}. ${item.company || item.name || item.id || "会社名未取得"} / ${label} / 最新 ${summary.latestAt || item.latestAt || "-"}`;
+    })
+    .join("\n");
   const resultCount = Array.isArray(result.results) ? result.results.length : 0;
+  const elapsedText = result.elapsedMs ? ` / 所要 ${Math.round(result.elapsedMs / 1000)}秒` : "";
   const loadingText = state.syncRunLoading ? "<p class=\"sync-loading\">取得中です。OneStreamを読んでいるため少し時間がかかります。</p>" : "";
 
   return `
     <section class="sync-run-result">
       <div>
         <h3>${result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
-        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || "-")} / 対象 ${result.totalTargets || 0}社 / 表示 ${result.selectedCount || 0}社 / 結果 ${resultCount}件</p>
+        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || "-")} / 対象 ${result.totalTargets || 0}社 / 表示 ${result.selectedCount || 0}社 / 結果 ${resultCount}件${escapeHtml(elapsedText)}</p>
         <p class="muted">${escapeHtml(result.note || "")}</p>
         ${loadingText}
       </div>
+      <pre class="sync-run-plain">${escapeHtml(plainRows || "表示用データが空です。APIは返っていますが、結果行が作れていません。")}</pre>
       ${rows ? `
         <table class="sync-run-table">
           <thead>
@@ -792,10 +809,12 @@ async function loadSyncDashboard() {
 
 async function runSyncPreview({ run = false } = {}) {
   try {
+    const startedAt = Date.now();
     const path = run
       ? "/api/sync-plan?run=1&limit=3&maxVideoChunks=1"
       : "/api/sync-plan?dryRun=1&limit=50";
     state.syncRunLoading = true;
+    state.syncRunStartedAt = startedAt;
     state.syncRunResult = {
       run,
       date: state.syncPlan?.today || "",
@@ -810,12 +829,14 @@ async function runSyncPreview({ run = false } = {}) {
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
     toast(run ? "取得テストを開始しました" : "今日の対象確認を開始しました");
     const result = await api(path);
-    state.syncRunResult = result;
+    state.syncRunResult = { ...result, elapsedMs: Date.now() - startedAt };
     state.syncRunLoading = false;
+    state.syncRunStartedAt = 0;
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
     toast(run ? "今日の取得テストが完了しました" : "今日の同期対象を確認しました");
   } catch (error) {
     state.syncRunLoading = false;
+    state.syncRunStartedAt = 0;
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
     toast(error.message || "同期テストに失敗しました");
   }
