@@ -313,6 +313,25 @@ async function loadDetail(id) {
   }
 }
 
+function clientCountsFor(previews) {
+  return previews.reduce((counts, preview) => {
+    counts[preview.status] = (counts[preview.status] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function applyPreviewUpdate(preview) {
+  state.detail = preview;
+  const index = state.previews.findIndex((item) => item.id === preview.id);
+  if (index >= 0) {
+    state.previews[index] = {
+      ...state.previews[index],
+      ...preview
+    };
+  }
+  state.counts = clientCountsFor(state.previews);
+}
+
 function renderShell() {
   const counts = state.counts;
   const all = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
@@ -696,9 +715,10 @@ async function runAction(action) {
       method: "POST",
       body: JSON.stringify({ action, operator: operator() })
     });
-    state.detail = data.preview;
+    applyPreviewUpdate(data.preview);
     toast("更新しました");
-    await loadPreviews();
+    renderShell();
+    renderDetail();
   } catch (error) {
     toast(error.message);
   }
