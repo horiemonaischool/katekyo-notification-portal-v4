@@ -665,5 +665,7 @@ module.exports = {
   notionRequestMethod,
   pageToPreview,
   queryCompanyPages,
-  requireNotionConfig
+  requireNotionConfig,
+  slotForDate,
+  todayYmdInJst
 };
