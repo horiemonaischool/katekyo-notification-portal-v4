@@ -10,6 +10,7 @@ const state = {
   detail: null,
   syncPlan: null,
   syncRunResult: null,
+  syncRunLoading: false,
   fetchingWatchId: "",
   localOverrides: loadLocalOverrides(),
   config: {
@@ -668,7 +669,7 @@ function renderSyncRunResult(result) {
     ?.companies?.slice(0, Number(result.selectedCount || 0)) || [];
   const items = (result.results && result.results.length ? result.results : result.displayRows && result.displayRows.length ? result.displayRows : fallbackRows)
     .slice(0, 12);
-  const rows = items.map((item) => {
+  const rows = items.map((item, index) => {
     const summary = item.summary || {};
     const statusText = item.status === "fetched"
       ? `取得 ${summary.activeUsers || 0}/${summary.userCount || 0}人 ${summary.totalLogs || 0}件 ${summary.totalWatchTime || ""}`
@@ -685,13 +686,16 @@ function renderSyncRunResult(result) {
           ? "sync-danger"
           : "";
     return `
-      <div class="sync-run-row">
-        <span>${escapeHtml(item.company)}</span>
-        <strong class="${className}">${escapeHtml(statusText)}</strong>
-      </div>
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(item.company || item.name || item.id || "会社名未取得")}</td>
+        <td><strong class="${className}">${escapeHtml(statusText || "-")}</strong></td>
+        <td>${escapeHtml(summary.latestAt || item.latestAt || "-")}</td>
+      </tr>
     `;
   }).join("");
   const resultCount = Array.isArray(result.results) ? result.results.length : 0;
+  const loadingText = state.syncRunLoading ? "<p class=\"sync-loading\">取得中です。OneStreamを読んでいるため少し時間がかかります。</p>" : "";
 
   return `
     <section class="sync-run-result">
@@ -699,16 +703,29 @@ function renderSyncRunResult(result) {
         <h3>${result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
         <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || "-")} / 対象 ${result.totalTargets || 0}社 / 表示 ${result.selectedCount || 0}社 / 結果 ${resultCount}件</p>
         <p class="muted">${escapeHtml(result.note || "")}</p>
+        ${loadingText}
       </div>
-      <div class="sync-run-list">
-        ${rows || "<p class=\"muted\">対象企業はありますが、結果行を取得できませんでした。同期予定を更新してから再度お試しください。</p>"}
-      </div>
+      ${rows ? `
+        <table class="sync-run-table">
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>企業名</th>
+              <th>結果</th>
+              <th>最新視聴</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      ` : "<p class=\"muted\">対象企業はありますが、結果行を取得できませんでした。同期予定を更新してから再度お試しください。</p>"}
     </section>
   `;
 }
 
 function renderSyncDashboard(plan) {
   const days = plan.days || [];
+  const syncButtonDisabled = state.syncRunLoading ? "disabled" : "";
+  const syncTestLabel = state.syncRunLoading ? "取得中..." : "取得テスト3社";
   const dayCards = days.map((day) => {
     const companies = (day.companies || []).slice(0, 12).map((company) => `
       <button class="sync-company" data-id="${escapeHtml(company.id)}" type="button">
@@ -751,10 +768,10 @@ function renderSyncDashboard(plan) {
           </div>
         </div>
         <div class="detail-actions">
-          <button class="ghost-button" id="backToSelectedButton" type="button">企業詳細へ戻る</button>
-          <button class="ghost-button" id="checkSyncTodayButton" type="button">今日の対象確認</button>
-          <button class="neutral-button" id="runSyncTestButton" type="button">取得テスト3社</button>
-          <button class="neutral-button" id="reloadSyncPlanButton" type="button">同期予定を更新</button>
+          <button class="ghost-button" id="backToSelectedButton" type="button" ${syncButtonDisabled}>企業詳細へ戻る</button>
+          <button class="ghost-button" id="checkSyncTodayButton" type="button" ${syncButtonDisabled}>今日の対象確認</button>
+          <button class="neutral-button" id="runSyncTestButton" type="button" ${syncButtonDisabled}>${syncTestLabel}</button>
+          <button class="neutral-button" id="reloadSyncPlanButton" type="button" ${syncButtonDisabled}>同期予定を更新</button>
         </div>
       </div>
       ${renderSyncRunResult(state.syncRunResult)}
@@ -778,11 +795,28 @@ async function runSyncPreview({ run = false } = {}) {
     const path = run
       ? "/api/sync-plan?run=1&limit=3&maxVideoChunks=1"
       : "/api/sync-plan?dryRun=1&limit=50";
+    state.syncRunLoading = true;
+    state.syncRunResult = {
+      run,
+      date: state.syncPlan?.today || "",
+      slot: {},
+      totalTargets: 0,
+      selectedCount: 0,
+      results: [],
+      note: run
+        ? "OneStreamから視聴履歴を取得中です。完了まで少しお待ちください。"
+        : "今日の同期対象を確認中です。"
+    };
+    if (state.syncPlan) renderSyncDashboard(state.syncPlan);
+    toast(run ? "取得テストを開始しました" : "今日の対象確認を開始しました");
     const result = await api(path);
     state.syncRunResult = result;
+    state.syncRunLoading = false;
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
     toast(run ? "今日の取得テストが完了しました" : "今日の同期対象を確認しました");
   } catch (error) {
+    state.syncRunLoading = false;
+    if (state.syncPlan) renderSyncDashboard(state.syncPlan);
     toast(error.message || "同期テストに失敗しました");
   }
 }
