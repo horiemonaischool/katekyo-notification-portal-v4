@@ -665,6 +665,93 @@ tr:last-child td {
   gap: 10px;
 }
 
+.sync-dashboard {
+  min-height: 100%;
+}
+
+.sync-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px;
+}
+
+.sync-day {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.sync-day-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.sync-day-head h3 {
+  font-size: 17px;
+}
+
+.sync-day-head p,
+.sync-counts,
+.sync-company strong {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sync-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sync-company-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sync-company {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.sync-company:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sync-company span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-ok {
+  color: var(--green);
+}
+
+.sync-warning {
+  color: var(--amber);
+}
+
+.sync-danger {
+  color: var(--red);
+}
+
 .recommendation,
 .activity,
 .note-box {
