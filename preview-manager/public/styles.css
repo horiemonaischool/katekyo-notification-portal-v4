@@ -666,6 +666,7 @@ tr:last-child td {
 }
 
 .sync-dashboard {
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-height: 100%;
 }
 
@@ -755,8 +756,9 @@ tr:last-child td {
 .sync-run-result {
   border-top: 1px solid var(--line);
   display: grid;
-  gap: 14px;
-  padding: 20px 40px;
+  gap: 8px;
+  padding: 14px 28px;
+  background: #fff;
 }
 
 .sync-run-result h3 {
@@ -786,45 +788,13 @@ tr:last-child td {
   margin-top: 8px;
 }
 
-.sync-run-plain {
+.sync-run-inline {
   background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-left: 4px solid var(--blue);
   color: #222;
-  font-family: inherit;
-  font-size: 15px;
   line-height: 1.9;
-  margin: 0;
-  min-height: 48px;
-  padding: 12px 14px;
-  white-space: pre-wrap;
-}
-
-.sync-run-table {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-collapse: collapse;
-  border-radius: var(--radius);
-  overflow: hidden;
-  width: 100%;
-}
-
-.sync-run-table th,
-.sync-run-table td {
-  border-bottom: 1px solid var(--line);
-  padding: 10px 12px;
-  text-align: left;
-  vertical-align: top;
-}
-
-.sync-run-table th {
-  background: #f3f7fb;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.sync-run-table tr:last-child td {
-  border-bottom: 0;
+  margin: 12px 0;
+  padding: 8px 12px;
 }
 
 .recommendation,
