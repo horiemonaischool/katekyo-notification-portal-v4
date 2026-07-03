@@ -9,6 +9,7 @@ const state = {
   search: "",
   detail: null,
   fetchingWatchId: "",
+  localOverrides: loadLocalOverrides(),
   config: {
     chatwork: { configured: false, enabled: false, mode: "preview_only" },
     slack: { configured: false, enabled: false, mode: "preview_only" }
@@ -121,6 +122,59 @@ function staticApi(path) {
     };
   }
   throw new Error("This static Vercel preview is read-only.");
+}
+
+function loadLocalOverrides() {
+  try {
+    return JSON.parse(localStorage.getItem("katekyo.previewOverrides") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalOverrides() {
+  try {
+    localStorage.setItem("katekyo.previewOverrides", JSON.stringify(state.localOverrides || {}));
+  } catch {
+    // Ignore storage failures. The current screen state still remains usable.
+  }
+}
+
+function overlayPreview(preview) {
+  if (!preview?.id) return preview;
+  const local = state.localOverrides?.[preview.id];
+  if (!local) return preview;
+  return {
+    ...preview,
+    ...local,
+    stats: { ...(preview.stats || {}), ...(local.stats || {}) },
+    delivery: { ...(preview.delivery || {}), ...(local.delivery || {}) },
+    meeting: { ...(preview.meeting || {}), ...(local.meeting || {}) },
+    activity: [...(local.activity || []), ...(preview.activity || [])]
+  };
+}
+
+function rememberPreview(preview) {
+  if (!preview?.id) return;
+  state.localOverrides[preview.id] = {
+    status: preview.status,
+    reviewer: preview.reviewer,
+    approvedAt: preview.approvedAt,
+    approvedBy: preview.approvedBy,
+    skippedAt: preview.skippedAt,
+    skippedBy: preview.skippedBy,
+    sentAt: preview.sentAt,
+    sentBy: preview.sentBy,
+    delivery: preview.delivery,
+    stats: preview.stats,
+    learners: preview.learners,
+    recommendations: preview.recommendations,
+    risks: preview.risks,
+    message: preview.message,
+    notes: preview.notes,
+    activity: (preview.activity || []).slice(0, 20)
+  };
+  saveLocalOverrides();
 }
 
 async function loadNotionStatus() {
@@ -273,8 +327,8 @@ function renderNotionStatus() {
 
 async function loadPreviews() {
   const data = await api(`/api/previews${queryString()}`);
-  state.previews = data.previews;
-  state.counts = data.counts || {};
+  state.previews = (data.previews || []).map(overlayPreview);
+  state.counts = clientCountsFor(state.previews);
   state.cycle = data.cycle || null;
   renderShell();
 
@@ -300,7 +354,7 @@ async function loadDetail(id) {
   try {
     const data = await api(`/api/previews/${encodeURIComponent(id)}`);
     state.selectedId = id;
-    state.detail = data.preview;
+    state.detail = overlayPreview(data.preview);
     renderList();
     renderDetail();
   } catch (error) {
@@ -321,14 +375,16 @@ function clientCountsFor(previews) {
 }
 
 function applyPreviewUpdate(preview) {
-  state.detail = preview;
+  const merged = overlayPreview(preview);
+  state.detail = merged;
   const index = state.previews.findIndex((item) => item.id === preview.id);
   if (index >= 0) {
     state.previews[index] = {
       ...state.previews[index],
-      ...preview
+      ...merged
     };
   }
+  rememberPreview(merged);
   state.counts = clientCountsFor(state.previews);
 }
 
@@ -669,6 +725,7 @@ function applyWatchResult(result) {
       reason: "直近の受講履歴に出ている講義です。必要に応じて次の案内に使えます。"
     }));
   }
+  rememberPreview(preview);
 
   const listIndex = state.previews.findIndex((item) => item.id === preview.id);
   if (listIndex >= 0) {
@@ -715,7 +772,22 @@ async function runAction(action) {
       method: "POST",
       body: JSON.stringify({ action, operator: operator() })
     });
-    applyPreviewUpdate(data.preview);
+    const merged = {
+      ...overlayPreview(data.preview),
+      status: data.preview.status,
+      reviewer: data.preview.reviewer,
+      approvedAt: data.preview.approvedAt,
+      approvedBy: data.preview.approvedBy,
+      skippedAt: data.preview.skippedAt,
+      skippedBy: data.preview.skippedBy,
+      sentAt: data.preview.sentAt,
+      sentBy: data.preview.sentBy,
+      activity: [
+        ...(data.preview.activity || []),
+        ...((overlayPreview(data.preview).activity || []).filter((item) => !String(item.id || "").startsWith("action-")))
+      ]
+    };
+    applyPreviewUpdate(merged);
     toast("更新しました");
     renderShell();
     renderDetail();
@@ -731,9 +803,10 @@ async function saveDetailPatch(patch) {
       method: "PATCH",
       body: JSON.stringify({ ...patch, operator: operator() })
     });
-    state.detail = data.preview;
+    applyPreviewUpdate(data.preview);
     toast("保存しました");
-    await loadPreviews();
+    renderShell();
+    renderDetail();
   } catch (error) {
     toast(error.message);
   }
@@ -760,13 +833,16 @@ async function sendDryRun() {
       method: "POST",
       body: JSON.stringify({ operator: operator(), confirmText: sendEnabled ? "送信する" : "" })
     });
-    state.detail = data.preview;
+    if (data.preview) {
+      applyPreviewUpdate(data.preview);
+    }
     if (data.blocked) {
       toast(data.message || "投稿OFFのため、本番投稿はしていません");
     } else {
       toast(sendEnabled ? `${providerLabel}に送信しました` : "投稿OFFのため、本番投稿はしていません");
     }
-    await loadPreviews();
+    renderShell();
+    renderDetail();
   } catch (error) {
     toast(error.message || "外部投稿は実行されませんでした");
     await loadDetail(state.selectedId);
