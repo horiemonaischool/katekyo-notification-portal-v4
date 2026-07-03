@@ -670,31 +670,6 @@ function renderSyncRunResult(result) {
     ?.companies?.slice(0, Number(result.selectedCount || 0)) || [];
   const items = (result.results && result.results.length ? result.results : result.displayRows && result.displayRows.length ? result.displayRows : fallbackRows)
     .slice(0, 12);
-  const rows = items.map((item, index) => {
-    const summary = item.summary || {};
-    const statusText = item.status === "fetched"
-      ? `取得 ${summary.activeUsers || 0}/${summary.userCount || 0}人 ${summary.totalLogs || 0}件 ${summary.totalWatchTime || ""}`
-      : item.status === "dry_run"
-        ? syncRiskText(item)
-        : item.status === "queued"
-          ? "取得対象"
-        : item.error || item.status;
-    const className = item.status === "fetched" || statusText === "準備OK"
-      ? "sync-ok"
-      : item.status === "skipped" || item.targetStatus === "delivery_missing"
-        ? "sync-warning"
-        : item.status === "error" || item.targetStatus === "onestream_missing"
-          ? "sync-danger"
-          : "";
-    return `
-      <tr>
-        <td>${index + 1}</td>
-        <td>${escapeHtml(item.company || item.name || item.id || "会社名未取得")}</td>
-        <td><strong class="${className}">${escapeHtml(statusText || "-")}</strong></td>
-        <td>${escapeHtml(summary.latestAt || item.latestAt || "-")}</td>
-      </tr>
-    `;
-  }).join("");
   const plainRows = (items.length ? items : (result.results || []))
     .slice(0, 12)
     .map((item, index) => {
@@ -709,34 +684,31 @@ function renderSyncRunResult(result) {
       return `${index + 1}. ${item.company || item.name || item.id || "会社名未取得"} / ${label} / 最新 ${summary.latestAt || item.latestAt || "-"}`;
     })
     .join("\n");
+  const inlineRows = (plainRows || "結果詳細を作成できませんでした。")
+    .split("\n")
+    .map((line) => escapeHtml(line))
+    .join("<br>");
   const resultCount = Array.isArray(result.results) ? result.results.length : 0;
   const elapsedText = result.elapsedMs ? ` / 所要 ${Math.round(result.elapsedMs / 1000)}秒` : "";
   const loadingText = state.syncRunLoading ? "<p class=\"sync-loading\">取得中です。OneStreamを読んでいるため少し時間がかかります。</p>" : "";
 
   return `
-    <section class="sync-run-result">
+    <section class="sync-run-result" id="syncRunResult">
       <div>
         <h3>${result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
         <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || "-")} / 対象 ${result.totalTargets || 0}社 / 表示 ${result.selectedCount || 0}社 / 結果 ${resultCount}件${escapeHtml(elapsedText)}</p>
+        <p class="sync-run-inline">${inlineRows}</p>
         <p class="muted">${escapeHtml(result.note || "")}</p>
         ${loadingText}
       </div>
-      <pre class="sync-run-plain">${escapeHtml(plainRows || "表示用データが空です。APIは返っていますが、結果行が作れていません。")}</pre>
-      ${rows ? `
-        <table class="sync-run-table">
-          <thead>
-            <tr>
-              <th>No.</th>
-              <th>企業名</th>
-              <th>結果</th>
-              <th>最新視聴</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      ` : "<p class=\"muted\">対象企業はありますが、結果行を取得できませんでした。同期予定を更新してから再度お試しください。</p>"}
     </section>
   `;
+}
+
+function scrollSyncResultIntoView() {
+  window.setTimeout(() => {
+    document.getElementById("syncRunResult")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, 30);
 }
 
 function renderSyncDashboard(plan) {
@@ -827,12 +799,14 @@ async function runSyncPreview({ run = false } = {}) {
         : "今日の同期対象を確認中です。"
     };
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
+    scrollSyncResultIntoView();
     toast(run ? "取得テストを開始しました" : "今日の対象確認を開始しました");
     const result = await api(path);
     state.syncRunResult = { ...result, elapsedMs: Date.now() - startedAt };
     state.syncRunLoading = false;
     state.syncRunStartedAt = 0;
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
+    scrollSyncResultIntoView();
     toast(run ? "今日の取得テストが完了しました" : "今日の同期対象を確認しました");
   } catch (error) {
     state.syncRunLoading = false;
