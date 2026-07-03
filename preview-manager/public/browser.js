@@ -831,7 +831,19 @@ async function sendDryRun() {
   try {
     const data = await api(`/api/previews/${encodeURIComponent(state.selectedId)}/send`, {
       method: "POST",
-      body: JSON.stringify({ operator: operator(), confirmText: sendEnabled ? "送信する" : "" })
+      body: JSON.stringify({
+        operator: operator(),
+        confirmText: sendEnabled ? "送信する" : "",
+        preview: {
+          delivery: preview.delivery,
+          stats: preview.stats,
+          learners: preview.learners,
+          recommendations: preview.recommendations,
+          risks: preview.risks,
+          notes: preview.notes,
+          message: preview.message
+        }
+      })
     });
     if (data.preview) {
       applyPreviewUpdate(data.preview);
