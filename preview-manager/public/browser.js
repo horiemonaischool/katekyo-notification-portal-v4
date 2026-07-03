@@ -768,8 +768,8 @@ async function loadSyncDashboard() {
 async function runSyncPreview({ run = false } = {}) {
   try {
     const path = run
-      ? "/api/sync-run?run=1&limit=3&maxVideoChunks=1"
-      : "/api/sync-run?dryRun=1&limit=50";
+      ? "/api/sync-plan?run=1&limit=3&maxVideoChunks=1"
+      : "/api/sync-plan?dryRun=1&limit=50";
     const result = await api(path);
     state.syncRunResult = result;
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
