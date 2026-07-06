@@ -59,6 +59,58 @@ function targetStatus(preview) {
   return "ready";
 }
 
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  }
+
+  const workerCount = Math.min(Math.max(concurrency, 1), items.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
+}
+
+async function fetchPreviewWatch(preview, options) {
+  const base = displayRowFromPreview(preview);
+  const groupId = base.groupId || "";
+
+  if (!groupId) {
+    return { ...base, status: "skipped", error: "OneStreamグループID未設定" };
+  }
+
+  try {
+    const watch = await fetchCompanyWatchSummary({
+      groupId,
+      days: options.days,
+      pageSize: options.pageSize,
+      maxPages: options.maxPages,
+      chunkSize: options.chunkSize,
+      maxVideoChunks: options.maxVideoChunks
+    });
+    return {
+      ...base,
+      status: "fetched",
+      batchCount: watch.batchCount,
+      failedBatches: watch.failedBatches,
+      testedVideoChunks: watch.testedVideoChunks,
+      totalVideoChunks: watch.totalVideoChunks,
+      summary: compactSummary(watch)
+    };
+  } catch (error) {
+    return {
+      ...base,
+      status: "error",
+      error: error.message || "OneStream視聴履歴の取得に失敗しました"
+    };
+  }
+}
+
 async function buildSyncRunResponse(query, previews) {
   const date = query.get("date") || todayYmdInJst();
   const run = isRunRequested(query);
@@ -68,6 +120,7 @@ async function buildSyncRunResponse(query, previews) {
   const maxPages = numberParam(query, "maxPages", 5, 1, 20);
   const chunkSize = numberParam(query, "chunkSize", 30, 1, 50);
   const maxVideoChunks = numberParam(query, "maxVideoChunks", run ? 1 : 0, 0, 200);
+  const concurrency = numberParam(query, "concurrency", run ? 3 : 1, 1, 5);
   const eligible = previews.filter((preview) => preview.target?.eligible && preview.sync?.autoSync !== false);
   const slot = slotForDate(date);
   const targets = eligible
@@ -75,47 +128,15 @@ async function buildSyncRunResponse(query, previews) {
     .sort((a, b) => a.company.localeCompare(b.company, "ja"));
   const selected = targets.slice(0, limit);
 
-  const results = [];
-  for (const preview of selected) {
-    const base = displayRowFromPreview(preview);
-    const groupId = base.groupId || "";
-
-    if (!run) {
-      results.push({ ...base, status: "dry_run" });
-      continue;
-    }
-
-    if (!groupId) {
-      results.push({ ...base, status: "skipped", error: "OneStreamグループID未設定" });
-      continue;
-    }
-
-    try {
-      const watch = await fetchCompanyWatchSummary({
-        groupId,
+  const results = run
+    ? await mapWithConcurrency(selected, concurrency, (preview) => fetchPreviewWatch(preview, {
         days,
         pageSize,
         maxPages,
         chunkSize,
         maxVideoChunks
-      });
-      results.push({
-        ...base,
-        status: "fetched",
-        batchCount: watch.batchCount,
-        failedBatches: watch.failedBatches,
-        testedVideoChunks: watch.testedVideoChunks,
-        totalVideoChunks: watch.totalVideoChunks,
-        summary: compactSummary(watch)
-      });
-    } catch (error) {
-      results.push({
-        ...base,
-        status: "error",
-        error: error.message || "OneStream視聴履歴の取得に失敗しました"
-      });
-    }
-  }
+      }))
+    : selected.map((preview) => ({ ...displayRowFromPreview(preview), status: "dry_run" }));
 
   return {
     date,
@@ -126,6 +147,7 @@ async function buildSyncRunResponse(query, previews) {
       ? "OneStreamから視聴履歴を取得しました。Notion更新と投稿はまだ実行していません。"
       : "今日の同期対象だけ確認しました。OneStream取得、Notion更新、投稿は実行していません。",
     limit,
+    concurrency: run ? concurrency : 0,
     totalEligibleCompanies: eligible.length,
     totalTargets: targets.length,
     selectedCount: selected.length,
