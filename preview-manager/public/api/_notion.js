@@ -185,6 +185,7 @@ function propertyValueForWrite(property, value) {
   if (!property) return null;
   if (property.type === "rich_text") return { rich_text: text ? [{ text: { content: text } }] : [] };
   if (property.type === "url") return { url: text || null };
+  if (property.type === "date") return { date: text ? { start: text } : null };
   if (property.type === "number") {
     const number = Number(text);
     return { number: Number.isFinite(number) ? number : null };
@@ -462,6 +463,25 @@ function deliveryPropertiesForPage(page, delivery = {}) {
   return properties;
 }
 
+function meetingPropertiesForPage(page, meeting = {}) {
+  const properties = {};
+  const lastName = propNameAny(page, PROP_MEETING_LAST_CANDIDATES);
+  const countName = propNameAny(page, PROP_MEETING_COUNT_CANDIDATES);
+  const nextName = propNameAny(page, PROP_MEETING_NEXT_CANDIDATES);
+
+  if (lastName && Object.prototype.hasOwnProperty.call(meeting, "lastDate")) {
+    setWritableProperty(properties, page, lastName, meeting.lastDate || "");
+  }
+  if (countName && Object.prototype.hasOwnProperty.call(meeting, "totalCount")) {
+    setWritableProperty(properties, page, countName, meeting.totalCount == null ? "" : String(meeting.totalCount));
+  }
+  if (nextName && Object.prototype.hasOwnProperty.call(meeting, "nextDate")) {
+    setWritableProperty(properties, page, nextName, meeting.nextDate || "");
+  }
+
+  return properties;
+}
+
 function hashId(id) {
   return crypto.createHash("sha1").update(id).digest("hex").slice(0, 10);
 }
@@ -661,11 +681,17 @@ module.exports = {
   deliveryPropertiesForPage,
   filterPreviews,
   json,
+  meetingPropertiesForPage,
   notionRequest,
   notionRequestMethod,
   pageToPreview,
+  propAny,
+  propNameAny,
   queryCompanyPages,
   requireNotionConfig,
+  dateText,
+  numberValue,
   slotForDate,
+  textValue,
   todayYmdInJst
 };
