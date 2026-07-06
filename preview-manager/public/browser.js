@@ -11,6 +11,7 @@ const state = {
   syncPlan: null,
   syncRunResult: null,
   syncRunLoading: false,
+  meetingSyncLoading: false,
   syncRunStartedAt: 0,
   fetchingWatchId: "",
   localOverrides: loadLocalOverrides(),
@@ -665,6 +666,7 @@ function syncRiskClass(company) {
 
 function renderSyncRunResult(result) {
   if (!result) return "";
+  const isMeetingSync = result.kind === "meeting_sync";
   const fallbackRows = (state.syncPlan?.days || [])
     .find((day) => day.date === result.date && Number(day.slot) === Number(result.slot?.index))
     ?.companies?.slice(0, Number(result.selectedCount || 0)) || [];
@@ -676,8 +678,12 @@ function renderSyncRunResult(result) {
       const summary = item.summary || {};
       const label = item.status === "fetched"
         ? `取得 ${summary.activeUsers || 0}/${summary.userCount || 0}人 ${summary.totalLogs || 0}件 ${summary.totalWatchTime || ""}`
+        : item.status === "updated"
+          ? `面談更新 前回 ${item.meeting?.lastDate || "-"} 回数 ${item.meeting?.totalCount || 0}回 次回 ${item.meeting?.nextDate || "-"}`
         : item.status === "dry_run"
-          ? syncRiskText(item)
+          ? isMeetingSync
+            ? `更新候補 前回 ${item.meeting?.lastDate || "-"} 回数 ${item.meeting?.totalCount || 0}回 次回 ${item.meeting?.nextDate || "-"}`
+            : syncRiskText(item)
           : item.status === "queued"
             ? "取得対象"
             : item.error || item.status || "-";
@@ -695,8 +701,8 @@ function renderSyncRunResult(result) {
   return `
     <section class="sync-run-result" id="syncRunResult">
       <div>
-        <h3>${result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
-        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || "-")} / 対象 ${result.totalTargets || 0}社 / 表示 ${result.selectedCount || 0}社 / 結果 ${resultCount}件${escapeHtml(elapsedText)}</p>
+        <h3>${isMeetingSync ? "面談情報更新結果" : result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
+        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || (isMeetingSync ? "面談情報" : "-"))} / 対象 ${result.totalTargets || result.changedCount || 0}社 / 表示 ${result.selectedCount || result.results?.length || 0}社 / 結果 ${resultCount}件${escapeHtml(elapsedText)}</p>
         <p class="sync-run-inline">${inlineRows}</p>
         <p class="muted">${escapeHtml(result.note || "")}</p>
         ${loadingText}
@@ -714,7 +720,9 @@ function scrollSyncResultIntoView() {
 function renderSyncDashboard(plan) {
   const days = plan.days || [];
   const syncButtonDisabled = state.syncRunLoading ? "disabled" : "";
+  const meetingButtonDisabled = state.syncRunLoading || state.meetingSyncLoading ? "disabled" : "";
   const syncTestLabel = state.syncRunLoading ? "取得中..." : "取得テスト3社";
+  const meetingSyncLabel = state.meetingSyncLoading ? "面談更新中..." : "面談情報更新";
   const dayCards = days.map((day) => {
     const companies = (day.companies || []).slice(0, 12).map((company) => `
       <button class="sync-company" data-id="${escapeHtml(company.id)}" type="button">
@@ -760,6 +768,7 @@ function renderSyncDashboard(plan) {
           <button class="ghost-button" id="backToSelectedButton" type="button" ${syncButtonDisabled}>企業詳細へ戻る</button>
           <button class="ghost-button" id="checkSyncTodayButton" type="button" ${syncButtonDisabled}>今日の対象確認</button>
           <button class="neutral-button" id="runSyncTestButton" type="button" ${syncButtonDisabled}>${syncTestLabel}</button>
+          <button class="neutral-button" id="runMeetingSyncButton" type="button" ${meetingButtonDisabled}>${meetingSyncLabel}</button>
           <button class="neutral-button" id="reloadSyncPlanButton" type="button" ${syncButtonDisabled}>同期予定を更新</button>
         </div>
       </div>
@@ -813,6 +822,49 @@ async function runSyncPreview({ run = false } = {}) {
     state.syncRunStartedAt = 0;
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
     toast(error.message || "同期テストに失敗しました");
+  }
+}
+
+async function runMeetingSync() {
+  try {
+    const startedAt = Date.now();
+    state.meetingSyncLoading = true;
+    state.syncRunResult = {
+      kind: "meeting_sync",
+      run: true,
+      date: state.syncPlan?.today || "",
+      slot: { label: "面談情報" },
+      totalTargets: 0,
+      selectedCount: 0,
+      results: [],
+      note: "面談ログから前回面談日・総合面談回数・次回面談予定日を更新中です。"
+    };
+    if (state.syncPlan) renderSyncDashboard(state.syncPlan);
+    scrollSyncResultIntoView();
+    toast("面談情報更新を開始しました");
+
+    const result = await api("/api/sync-plan?meeting=1&run=1&limit=30");
+    state.syncRunResult = {
+      kind: "meeting_sync",
+      run: true,
+      date: result.date || state.syncPlan?.today || "",
+      slot: { label: "面談情報" },
+      totalTargets: result.changedCount || 0,
+      selectedCount: result.results?.length || 0,
+      results: result.results || [],
+      note: result.message || "",
+      changedCount: result.changedCount || 0,
+      elapsedMs: Date.now() - startedAt
+    };
+    state.meetingSyncLoading = false;
+    await loadPreviews();
+    if (state.syncPlan) renderSyncDashboard(state.syncPlan);
+    scrollSyncResultIntoView();
+    toast(result.configured === false ? "面談ログDBが未設定です" : "面談情報更新が完了しました");
+  } catch (error) {
+    state.meetingSyncLoading = false;
+    if (state.syncPlan) renderSyncDashboard(state.syncPlan);
+    toast(error.message || "面談情報更新に失敗しました");
   }
 }
 
@@ -1133,6 +1185,11 @@ document.addEventListener("click", (event) => {
 
   if (event.target.id === "runSyncTestButton") {
     runSyncPreview({ run: true });
+    return;
+  }
+
+  if (event.target.id === "runMeetingSyncButton") {
+    runMeetingSync();
     return;
   }
 
