@@ -17,7 +17,7 @@ const {
 } = require("./_onestream");
 
 const MEETING_COMPANY_CANDIDATES = ["受講企業", "受講企業名", "法人名", "会社名", "企業名", "企業", "対象企業"];
-const MEETING_DATE_CANDIDATES = ["面談日", "面談実施日", "実施日", "開催日", "日付"];
+const MEETING_DATE_CANDIDATES = ["面談日", "面談実施日", "面談実施日時", "実施日", "実施日時", "開催日", "開催日時", "日付"];
 const MEETING_NEXT_CANDIDATES = ["次回面談予定日", "次回面談日", "次回面談", "次回予定日", "次回"];
 const MEETING_STATUS_CANDIDATES = ["ステータス", "状態", "現在ステータス"];
 const MEETING_DATABASE_TITLE_CANDIDATES = ["月次面談ログ", "面談ログ", "面談記録", "面談管理"];
@@ -274,6 +274,10 @@ function changedMeeting(preview, meeting) {
     || String(preview.meeting?.nextDate || "") !== String(meeting.nextDate || "");
 }
 
+function hasMeetingSignal(meeting) {
+  return Boolean(meeting.lastDate || meeting.nextDate || Number(meeting.totalCount || 0) > 0);
+}
+
 async function buildMeetingSyncResponse(query, companyPages) {
   const run = isRunRequested(query);
   const today = todayYmdInJst();
@@ -325,12 +329,29 @@ async function buildMeetingSyncResponse(query, companyPages) {
     applyMeetingRecord(summary.meeting, meetingPage, today);
   }
 
-  const targets = Array.from(summaries.values())
-    .filter((item) => changedMeeting(item.preview, item.meeting))
+  const allSummaries = Array.from(summaries.values());
+  const noDateSamples = allSummaries
+    .filter((item) => item.matchedLogs > 0 && !hasMeetingSignal(item.meeting))
+    .sort((a, b) => a.preview.company.localeCompare(b.preview.company, "ja"))
+    .slice(0, 5);
+  const targets = allSummaries
+    .filter((item) => item.matchedLogs > 0 && hasMeetingSignal(item.meeting) && changedMeeting(item.preview, item.meeting))
     .sort((a, b) => a.preview.company.localeCompare(b.preview.company, "ja"))
     .slice(0, limit);
 
   const results = [];
+  if (targets.length === 0 && noDateSamples.length > 0) {
+    for (const item of noDateSamples) {
+      results.push({
+        id: item.preview.id,
+        company: item.preview.company,
+        status: "skipped",
+        error: "面談ログとの紐づきはありますが、面談日/次回面談予定日を読み取れませんでした",
+        matchedLogs: item.matchedLogs,
+        meeting: item.meeting
+      });
+    }
+  }
   for (const item of targets) {
     if (!run) {
       results.push({
@@ -376,12 +397,15 @@ async function buildMeetingSyncResponse(query, companyPages) {
     meetingDatabaseSource,
     meetingDatabaseTitle,
     changedCount: targets.length,
+    noDateCount: noDateSamples.length,
     updatedCount: results.filter((item) => item.status === "updated").length,
     limit,
     results,
-    message: run
-      ? "面談ログから受講企業マスターへ面談情報を更新しました。"
-      : "面談ログから更新候補を作成しました。Notion更新はまだ実行していません。"
+    message: noDateSamples.length && targets.length === 0
+      ? "面談ログとの紐づきはありますが、面談日/次回面談予定日を読み取れませんでした。"
+      : run
+        ? "面談ログから受講企業マスターへ面談情報を更新しました。"
+        : "面談ログから更新候補を作成しました。Notion更新はまだ実行していません。"
   };
 }
 
