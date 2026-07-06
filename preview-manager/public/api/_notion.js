@@ -61,9 +61,9 @@ const PROP_SLACK_CHANNEL_ID_CANDIDATES = [
   "通知先チャンネルID"
 ];
 const PROP_OVERVIEW_CANDIDATES = ["概要", "備考", "メモ"];
-const PROP_MEETING_LAST_CANDIDATES = ["前回の面談日", "前回面談日", "最終面談日"];
+const PROP_MEETING_LAST_CANDIDATES = ["前回の面談日", "前回面談日", "前回面談", "最終面談日", "最終面談"];
 const PROP_MEETING_COUNT_CANDIDATES = ["総合面談実施回数", "面談実施回数", "面談回数"];
-const PROP_MEETING_NEXT_CANDIDATES = ["次回面談予定日", "次回面談日", "次回の面談日"];
+const PROP_MEETING_NEXT_CANDIDATES = ["次回面談予定日", "次回面談日", "次回の面談日", "次回面談", "次回予定日"];
 const PROP_SYNC_GROUP_CANDIDATES = ["同期グループ", "自動同期グループ", "OneStream同期グループ"];
 const PROP_SYNC_NEXT_CANDIDATES = ["次回視聴履歴取得日", "次回OneStream取得日", "次回同期日"];
 const PROP_SYNC_LAST_CANDIDATES = ["最終視聴履歴取得日", "最終OneStream取得日", "最終同期日"];
@@ -165,10 +165,21 @@ function prop(page, name) {
   return page.properties?.[name] || null;
 }
 
+function normalizePropName(name) {
+  return String(name || "")
+    .normalize("NFKC")
+    .replace(/[\s　_\-・:：/／]/g, "")
+    .toLowerCase();
+}
+
 function propAny(page, names) {
   for (const name of names) {
     const value = prop(page, name);
     if (value) return value;
+  }
+  const normalizedNames = new Set(names.map(normalizePropName));
+  for (const [actualName, value] of Object.entries(page.properties || {})) {
+    if (normalizedNames.has(normalizePropName(actualName))) return value;
   }
   return null;
 }
@@ -176,6 +187,10 @@ function propAny(page, names) {
 function propNameAny(page, names) {
   for (const name of names) {
     if (page.properties?.[name]) return name;
+  }
+  const normalizedNames = new Set(names.map(normalizePropName));
+  for (const actualName of Object.keys(page.properties || {})) {
+    if (normalizedNames.has(normalizePropName(actualName))) return actualName;
   }
   return "";
 }
@@ -257,6 +272,15 @@ function dateText(property) {
   if (property.type === "date" && property.date?.start) return property.date.start.slice(0, 10);
   if (property.type === "formula" && property.formula?.type === "date" && property.formula.date?.start) {
     return property.formula.date.start.slice(0, 10);
+  }
+  const text = textValue(property);
+  const iso = text.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (iso) {
+    return `${iso[1]}-${String(iso[2]).padStart(2, "0")}-${String(iso[3]).padStart(2, "0")}`;
+  }
+  const jp = text.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+  if (jp) {
+    return `${jp[1]}-${String(jp[2]).padStart(2, "0")}-${String(jp[3]).padStart(2, "0")}`;
   }
   return "";
 }
