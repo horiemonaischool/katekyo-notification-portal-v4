@@ -783,7 +783,7 @@ async function runSyncPreview({ run = false } = {}) {
   try {
     const startedAt = Date.now();
     const path = run
-      ? "/api/sync-plan?run=1&limit=3&maxVideoChunks=1"
+      ? "/api/sync-plan?run=1&limit=3&maxVideoChunks=1&concurrency=3"
       : "/api/sync-plan?dryRun=1&limit=50";
     state.syncRunLoading = true;
     state.syncRunStartedAt = startedAt;
