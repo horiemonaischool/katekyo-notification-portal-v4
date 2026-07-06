@@ -690,7 +690,17 @@ function renderSyncRunResult(result) {
       return `${index + 1}. ${item.company || item.name || item.id || "会社名未取得"} / ${label} / 最新 ${summary.latestAt || item.latestAt || "-"}`;
     })
     .join("\n");
-  const inlineRows = (plainRows || "結果詳細を作成できませんでした。")
+  let fallbackMessage = "結果詳細を作成できませんでした。";
+  if (isMeetingSync && !plainRows) {
+    const sourceText = result.meetingDatabaseTitle
+      ? `参照DB：${result.meetingDatabaseTitle}`
+      : result.meetingDatabaseSource
+        ? `参照DB：${result.meetingDatabaseSource}`
+        : "";
+    const noDateText = result.noDateCount ? ` / 日付未読取 ${result.noDateCount}件` : "";
+    fallbackMessage = `${result.note || "面談情報更新は完了しました。"} / 更新 ${result.updatedCount || 0}件 / 候補 ${result.changedCount || 0}件${noDateText}${sourceText ? ` / ${sourceText}` : ""}`;
+  }
+  const inlineRows = (plainRows || fallbackMessage)
     .split("\n")
     .map((line) => escapeHtml(line))
     .join("<br>");
@@ -702,7 +712,7 @@ function renderSyncRunResult(result) {
     <section class="sync-run-result" id="syncRunResult">
       <div>
         <h3>${isMeetingSync ? "面談情報更新結果" : result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
-        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || (isMeetingSync ? "面談情報" : "-"))} / 対象 ${result.totalTargets || result.changedCount || 0}社 / 表示 ${result.selectedCount || result.results?.length || 0}社 / 結果 ${resultCount}件${escapeHtml(elapsedText)}</p>
+        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || (isMeetingSync ? "面談情報" : "-"))} / 対象 ${result.totalTargets || result.changedCount || 0}社 / 表示 ${result.selectedCount || result.results?.length || 0}社 / 結果 ${resultCount}件${isMeetingSync ? ` / 更新 ${result.updatedCount || 0}件` : ""}${escapeHtml(elapsedText)}</p>
         <p class="sync-run-inline">${inlineRows}</p>
         <p class="muted">${escapeHtml(result.note || "")}</p>
         ${loadingText}
@@ -854,11 +864,16 @@ async function runMeetingSync() {
       results: result.results || [],
       note: result.message || "",
       changedCount: result.changedCount || 0,
+      updatedCount: result.updatedCount || 0,
+      noDateCount: result.noDateCount || 0,
+      meetingDatabaseSource: result.meetingDatabaseSource || "",
+      meetingDatabaseTitle: result.meetingDatabaseTitle || "",
       elapsedMs: Date.now() - startedAt
     };
     state.meetingSyncLoading = false;
     await loadPreviews();
-    if (state.syncPlan) renderSyncDashboard(state.syncPlan);
+    await loadSyncDashboard();
+    if (state.syncRunResult) renderSyncDashboard(state.syncPlan);
     scrollSyncResultIntoView();
     toast(result.configured === false ? "面談ログDBが未設定です" : "面談情報更新が完了しました");
   } catch (error) {
