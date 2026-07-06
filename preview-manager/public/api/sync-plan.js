@@ -18,7 +18,7 @@ const {
 
 const MEETING_COMPANY_CANDIDATES = ["受講企業", "受講企業名", "法人名", "会社名", "企業名", "企業", "対象企業"];
 const MEETING_DATE_CANDIDATES = ["面談日", "面談実施日", "実施日", "開催日", "日付"];
-const MEETING_NEXT_CANDIDATES = ["次回面談予定日", "次回面談日", "次回予定日", "次回"];
+const MEETING_NEXT_CANDIDATES = ["次回面談予定日", "次回面談日", "次回面談", "次回予定日", "次回"];
 const MEETING_STATUS_CANDIDATES = ["ステータス", "状態", "現在ステータス"];
 const SKIP_STATUS_PATTERN = /(キャンセル|中止|削除|不実施|無効)/;
 
