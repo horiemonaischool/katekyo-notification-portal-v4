@@ -454,7 +454,7 @@ async function buildSyncRunResponse(query, previews) {
   };
 }
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   try {
     const url = new URL(req.url, `https://${req.headers.host || "localhost"}`);
     const pages = await queryCompanyPages({ pageSize: 100, maxPages: 20 });
@@ -478,4 +478,7 @@ module.exports = async function handler(req, res) {
       error: error.message || "同期予定の取得に失敗しました。"
     });
   }
-};
+}
+
+module.exports = handler;
+module.exports.buildMeetingSyncResponse = buildMeetingSyncResponse;
