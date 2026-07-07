@@ -698,7 +698,8 @@ function renderSyncRunResult(result) {
         ? `参照DB：${result.meetingDatabaseSource}`
         : "";
     const noDateText = result.noDateCount ? ` / 日付未読取 ${result.noDateCount}件` : "";
-    fallbackMessage = `${result.note || "面談情報更新は完了しました。"} / 更新 ${result.updatedCount || 0}件 / 候補 ${result.changedCount || 0}件${noDateText}${sourceText ? ` / ${sourceText}` : ""}`;
+    const updateText = result.run ? `更新 ${result.updatedCount || 0}件` : "Notion更新なし";
+    fallbackMessage = `${result.note || "面談情報確認は完了しました。"} / ${updateText} / 候補 ${result.changedCount || 0}件${noDateText}${sourceText ? ` / ${sourceText}` : ""}`;
   }
   const inlineRows = (plainRows || fallbackMessage)
     .split("\n")
@@ -711,8 +712,8 @@ function renderSyncRunResult(result) {
   return `
     <section class="sync-run-result" id="syncRunResult">
       <div>
-        <h3>${isMeetingSync ? "面談情報更新結果" : result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
-        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || (isMeetingSync ? "面談情報" : "-"))} / 対象 ${result.totalTargets || result.changedCount || 0}社 / 表示 ${result.selectedCount || result.results?.length || 0}社 / 結果 ${resultCount}件${isMeetingSync ? ` / 更新 ${result.updatedCount || 0}件` : ""}${escapeHtml(elapsedText)}</p>
+        <h3>${isMeetingSync ? result.run ? "面談情報更新結果" : "面談情報確認結果" : result.run ? "今日の取得テスト結果" : "今日の同期対象確認"}</h3>
+        <p>${escapeHtml(result.date || "-")} / ${escapeHtml(result.slot?.label || (isMeetingSync ? "面談情報" : "-"))} / 対象 ${result.totalTargets || result.changedCount || 0}社 / 表示 ${result.selectedCount || result.results?.length || 0}社 / 結果 ${resultCount}件${isMeetingSync ? result.run ? ` / 更新 ${result.updatedCount || 0}件` : " / Notion更新なし" : ""}${escapeHtml(elapsedText)}</p>
         <p class="sync-run-inline">${inlineRows}</p>
         <p class="muted">${escapeHtml(result.note || "")}</p>
         ${loadingText}
@@ -732,7 +733,7 @@ function renderSyncDashboard(plan) {
   const syncButtonDisabled = state.syncRunLoading ? "disabled" : "";
   const meetingButtonDisabled = state.syncRunLoading || state.meetingSyncLoading ? "disabled" : "";
   const syncTestLabel = state.syncRunLoading ? "取得中..." : "取得テスト3社";
-  const meetingSyncLabel = state.meetingSyncLoading ? "面談更新中..." : "面談情報更新";
+  const meetingSyncLabel = state.meetingSyncLoading ? "面談確認中..." : "面談情報確認";
   const dayCards = days.map((day) => {
     const companies = (day.companies || []).slice(0, 12).map((company) => `
       <button class="sync-company" data-id="${escapeHtml(company.id)}" type="button">
@@ -841,22 +842,22 @@ async function runMeetingSync() {
     state.meetingSyncLoading = true;
     state.syncRunResult = {
       kind: "meeting_sync",
-      run: true,
+      run: false,
       date: state.syncPlan?.today || "",
       slot: { label: "面談情報" },
       totalTargets: 0,
       selectedCount: 0,
       results: [],
-      note: "面談ログから前回面談日・総合面談回数・次回面談予定日を更新中です。"
+      note: "面談ログから前回面談日・総合面談回数・次回面談予定日の更新候補を確認中です。Notion更新は実行しません。"
     };
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
     scrollSyncResultIntoView();
-    toast("面談情報更新を開始しました");
+    toast("面談情報確認を開始しました");
 
-    const result = await api("/api/sync-plan?meeting=1&run=1&limit=30");
+    const result = await api("/api/sync-plan?meeting=1&dryRun=1&limit=30");
     state.syncRunResult = {
       kind: "meeting_sync",
-      run: true,
+      run: Boolean(result.run),
       date: result.date || state.syncPlan?.today || "",
       slot: { label: "面談情報" },
       totalTargets: result.changedCount || 0,
@@ -875,11 +876,11 @@ async function runMeetingSync() {
     await loadSyncDashboard();
     if (state.syncRunResult) renderSyncDashboard(state.syncPlan);
     scrollSyncResultIntoView();
-    toast(result.configured === false ? "面談ログDBが未設定です" : "面談情報更新が完了しました");
+    toast(result.configured === false ? "面談ログDBが未設定です" : "面談情報確認が完了しました");
   } catch (error) {
     state.meetingSyncLoading = false;
     if (state.syncPlan) renderSyncDashboard(state.syncPlan);
-    toast(error.message || "面談情報更新に失敗しました");
+    toast(error.message || "面談情報確認に失敗しました");
   }
 }
 
